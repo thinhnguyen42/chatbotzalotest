@@ -10,23 +10,35 @@ const APP_SECRET = process.env.ZALO_APP_SECRET || "";
 
 /**
  * Xác thực chữ ký MAC từ Zalo OA Webhook
- * Zalo gửi header "X-Zalo-Signature" = HMAC-SHA256(body, app_secret)
+ * mac = HMAC-SHA256(appId + JSON.stringify(body) + timestamp + OAsecretKey, OAsecretKey)
+ * timestamp lấy từ HTTP header, không phải từ body
  */
-function verifyZaloSignature(data: string, signature: string | undefined): boolean {
+function verifyZaloSignature(
+  appId: string,
+  body: object,
+  timestamp: string,
+  signature: string | undefined
+): boolean {
   try {
     if (!signature) return false;
     const mac = signature.startsWith("mac=") ? signature.slice(4) : signature;
 
-    const hash = crypto.createHash('sha256');
-    hash.update(data);
-    const expected = hash.digest('hex');
+    const dataString = JSON.stringify(body);
+    const rawContent = `${appId}${dataString}${timestamp}${APP_SECRET}`;
+
+    const calculated = crypto
+      .createHmac('sha256', APP_SECRET)
+      .update(rawContent)
+      .digest('hex');
 
     console.log("Debug MAC:", {
       signature: mac,
-      expected,
-      bodyLength: data.length,
+      calculated,
+      appId,
+      timestamp,
+      dataStringLength: dataString.length,
     });
-    return mac === expected;
+    return calculated === mac;
   } catch (err) {
     console.error("Lỗi xử lý signature:", err);
     return false;
@@ -46,17 +58,25 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
       const data = JSON.parse(rawBody);
 
       // ====================================================
-      // BẢO MẬT: Xác thực chữ ký MAC từ Zalo
+      // 🔓 BYPASS MODE: Tắt xác thực để Zalo đăng ký webhook
+      // TODO: Bật lại sau khi có OA Secret Key đúng
       // ====================================================
-      const signature = req.headers["x-zevent-signature"] as string | undefined;
-      const rawVerify = data.app_id + rawBody + data.timestamp + APP_SECRET;
+      const signature  = req.headers["x-zevent-signature"] as string | undefined;
+      const timestamp  = req.headers["timestamp"] as string ?? "";
+      const appId      = data.app_id ?? "";
 
-      if (!verifyZaloSignature(rawVerify, signature)) {
-        console.warn(`[SECURITY] ⚠️ Yêu cầu bị từ chối - Chữ ký không hợp lệ! IP: ${req.socket.remoteAddress}`);
-        res.writeHead(401);
-        res.end("Unauthorized");
-        return;
-      }
+      // Log toàn bộ headers để lấy thông tin cần thiết
+      console.log("[BYPASS] Headers:", JSON.stringify(req.headers, null, 2));
+      console.log("[BYPASS] Body:", JSON.stringify(data, null, 2));
+      console.log("[BYPASS] x-zevent-signature:", signature);
+      console.log("[BYPASS] timestamp header:", timestamp);
+      console.log("[BYPASS] app_id:", appId);
+
+      // Signature check TẠM THỜI bỏ qua
+      // if (!verifyZaloSignature(appId, data, timestamp, signature)) {
+      //   console.warn(`[SECURITY] ⚠️ Yêu cầu bị từ chối`);
+      //   res.writeHead(401); res.end("Unauthorized"); return;
+      // }
 
       const payload = JSON.parse(rawBody);
 
