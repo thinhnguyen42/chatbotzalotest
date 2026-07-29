@@ -34,5 +34,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/smart-home-sh/properdo-zalo-oa:${{ github.sha }}
-            ghcr.io/smart-home-sh/properdo-zalo-oa:latest
+            ghcr.io/smart-home-sh/sunhavens-zalo-oa:${{ github.sha }}
+            ghcr.io/smart-home-sh/sunhavens-zalo-oa:latest
