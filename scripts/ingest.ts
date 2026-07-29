@@ -18,16 +18,9 @@ const CHUNK_SIZE = 800;
 const CHUNK_OVERLAP = 100;
 
 function chunkText(text: string): string[] {
-    const chunks: string[] = [];
-    let start = 0;
-
-    while (start < text.length) {
-        const end = Math.min(start + CHUNK_SIZE, text.length);
-        chunks.push(text.slice(start, end).trim());
-        start += CHUNK_SIZE - CHUNK_OVERLAP;
-    }
-
-    return chunks.filter((c) => c.length > 0);
+    // Tách theo mỗi chủ đề lớn trong faq.md (cách nhau bởi các dòng rỗng)
+    const rawParagraphs = text.split(/\n\s*\n\s*\n|\n(?=[A-ZÀ-Ỹ][^\n]{1,40}\nÁp dụng)/g);
+    return rawParagraphs.map((p) => p.trim()).filter((p) => p.length > 20);
 }
 
 async function ingest() {
@@ -59,7 +52,7 @@ async function ingest() {
     console.log(`[ingest] Tổng cộng ${allChunks.length} chunk, đang tạo embedding...`);
 
     // Tạo embedding theo batch nhỏ để tránh 1 request quá lớn
-    const BATCH_SIZE = 20;
+    const BATCH_SIZE = 100;
     const result: Chunk[] = [];
 
     for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
@@ -79,6 +72,7 @@ async function ingest() {
         });
 
         console.log(`[ingest] Đã embed ${Math.min(i + BATCH_SIZE, allChunks.length)}/${allChunks.length}`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     saveStore(result);

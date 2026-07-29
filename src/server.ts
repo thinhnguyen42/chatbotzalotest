@@ -1,7 +1,7 @@
 import "dotenv/config";
 import path from "path";
 import express, { Request, Response } from "express";
-import { sendTextMessage } from "./zaloClient";
+import { sendTextMessage, notifyAdmin, sendImageMessage, sendHouseRulesImage } from "./zaloClient";
 import { generateReply } from "./replyEngine";
 import { verifyZaloSignature } from "./verifyZaloSignature";
 
@@ -42,6 +42,33 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
             if (userId && userText) {
                 const replyText = await generateReply(userText);
                 await sendTextMessage(userId, replyText);
+
+                // Nếu khách hỏi về Nội quy -> Tự động upload & gửi kèm hình ảnh noiQuy.jpg
+                const isHouseRules = /\b(nội quy|quy định)\b/i.test(userText);
+                if (isHouseRules) {
+                    console.log(`[server] Gửi hình ảnh Bảng nội quy noiQuy.jpg đính kèm cho user ${userId}...`);
+                    await sendHouseRulesImage(userId);
+                }
+
+                // Tự động gửi thông báo khẩn cấp, phàn nàn tiếng ồn hoặc báo hỏng cho Admin
+                const isEmergency = (/\b(cháy nhà|bị cháy|đang cháy|chập điện|hỏa hoạn|nổ|cứu|khẩn cấp|rò rỉ|báo cháy|tai nạn)\b|\bcháy\b/i.test(userText)) && !/\b(phòng cháy|pccc)\b/i.test(userText);
+                const isNoiseComplaint = /\b(ồn|ồn ào|tiếng ồn|hàng xóm ồn|mở nhạc to|karaoke|hát hò)\b/i.test(userText);
+                const isRoomNumber = /^(phòng\s*|p\.?\s*)?\d{3,4}$/i.test(userText.trim());
+                const isIssueReport = /hỏng|mất điện|mất nước|sự cố|báo hỏng|không lạnh|bị kẹt|rò rỉ/i.test(userText);
+
+                if (isEmergency) {
+                    const emergencyNotice = `🚨🚨🚨 [CẢNH BÁO KHẨN CẤP - XỬ LÝ NGAY] 🚨🚨🚨\n👤 Người gửi ID: ${userId}\n💬 Nội dung tin nhắn: "${userText}"\n⏰ Thời gian: ${new Date().toLocaleString("vi-VN")}\n👉 Ban quản lý/Admin vui lòng liên hệ khách hàng hoặc kiểm tra xử lý gấp!`;
+                    console.log(`[server] Gửi CẢNH BÁO KHẨN CẤP cho Admin:`, emergencyNotice);
+                    await notifyAdmin(emergencyNotice);
+                } else if (isNoiseComplaint) {
+                    const noiseNotice = `🔊🔊🔊 [PHÀN NÀN TIẾNG ỒN - XỬ LÝ NGAY] 🔊🔊🔊\n👤 Khách hàng ID: ${userId}\n💬 Nội dung phàn nàn: "${userText}"\n⏰ Thời gian: ${new Date().toLocaleString("vi-VN")}\n👉 Admin/Ban quản lý vui lòng kiểm tra nhắc nhở khu vực gây ồn!`;
+                    console.log(`[server] Gửi thông báo PHÀN NÀN TIẾNG ỒN cho Admin:`, noiseNotice);
+                    await notifyAdmin(noiseNotice);
+                } else if (isRoomNumber || isIssueReport) {
+                    const adminNotice = `🔔 [YÊU CẦU HỖ TRỢ / BÁO HỎNG]\n👤 Khách hàng ID: ${userId}\n💬 Nội dung: "${userText}"\n⏰ Thời gian: ${new Date().toLocaleString("vi-VN")}`;
+                    console.log(`[server] Gửi thông báo hỗ trợ cho Admin:`, adminNotice);
+                    await notifyAdmin(adminNotice);
+                }
             }
         }
 

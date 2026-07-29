@@ -1,6 +1,7 @@
 import axios from "axios";
 import { getEmbedding } from "./embeddings";
 import { queryStore } from "./vectorStore";
+import { findDirectFaqMatch } from "./faqParser";
 
 /**
  * Ngưỡng similarity để quyết định "có tìm thấy trong KB hay không".
@@ -9,98 +10,78 @@ import { queryStore } from "./vectorStore";
  * sai (quá dễ dãi -> tăng ngưỡng, quá "không biết" -> giảm ngưỡng).
  */
 const SIMILARITY_THRESHOLD = parseFloat(
-    process.env.RAG_SIMILARITY_THRESHOLD || "0.7"
+    process.env.RAG_SIMILARITY_THRESHOLD || "0.85"
 );
-const TOP_K = 3;
+const TOP_K = 4;
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-const CHAT_MODEL = "gemini-2.5-flash";
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+function cleanMarkdownText(text: string): string {
+    if (!text) return text;
+    return text
+        // Xóa in đậm Markdown **text** -> text
+        .replace(/\*\*(.*?)\*\*/g, "$1")
+        // Đổi các dấu gạch đầu dòng dạng * thành - 
+        .replace(/^\s*\*[\s]+/gm, "- ")
+        // Xóa in nghiêng Markdown *text* -> text
+        .replace(/\*(.*?)\*/g, "$1")
+        .trim();
+}
 
-/**
- * enableSearch = true -> bật Google Search grounding, Gemini sẽ tự động
- * tìm kiếm trên web khi cần để trả lời chính xác, cập nhật thông tin mới.
- * Chỉ nên bật ở nhánh "không tìm thấy trong KB" - nhánh trả lời DỰA TRÊN
- * KB thì không cần (đã có context rồi, bật thêm dễ khiến model trộn lẫn
- * nguồn, tốn thêm chi phí mỗi lần gọi có search).
- */
-async function callGemini(prompt: string, enableSearch: boolean = false): Promise<string> {
-    if (!GEMINI_API_KEY) {
-        return "Xin lỗi, hiện mình chưa hiểu câu hỏi này. Bạn vui lòng nhắn lại rõ hơn giúp mình nhé!";
-    }
+const DEFAULT_UNKNOWN_REPLY = `Xin lỗi, mình chưa hiểu rõ yêu cầu của bạn.
+Bạn có thể nhập từ khóa cần hỗ trợ dưới đây ạ:
+🔹 Dịch vụ
+🔹 Bảng giá
+🔹 Khuyến mãi
+🔹 Đặt lịch
+🔹 Liên hệ
+🔹 Hướng dẫn
+🔹 Bảo hành
+🔹 Hỗ trợ
+🔹 Địa chỉ
+🔹 Giờ làm việc`;
 
-    try {
-        const body: any = {
-            contents: [{ parts: [{ text: prompt }] }],
-        };
+function extractAnswerFromChunk(chunkText: string): string {
+    if (!chunkText) return "";
 
-        if (enableSearch) {
-            body.tools = [{ google_search: {} }];
-        }
+    // Tìm đoạn trả lời sau "Chatbot:" trong chunk
+    const match = chunkText.match(/Chatbot\s*(?:trả lời)?:([\s\S]*)/i);
+    let answer = match ? match[1] : chunkText;
 
-        const res = await axios.post(
-            `${BASE_URL}/models/${CHAT_MODEL}:generateContent`,
-            body,
-            {
-                headers: {
-                    "x-goog-api-key": GEMINI_API_KEY,
-                    "Content-Type": "application/json",
-                },
-            }
-        );
-
-        const candidate = res.data.candidates?.[0];
-        const text = candidate?.content?.parts?.[0]?.text;
-
-        // Log các câu Gemini đã search (nếu có) - hữu ích để debug/theo dõi chi phí
-        const searchQueries = candidate?.groundingMetadata?.webSearchQueries;
-        if (searchQueries?.length) {
-            console.log("[ragEngine] Gemini đã search:", searchQueries.join(", "));
-        }
-
-        return text || "Xin lỗi, mình chưa trả lời được câu này.";
-    } catch (err: any) {
-        console.error("[ragEngine] Lỗi gọi Gemini:", err.response?.data || err.message);
-        return "Xin lỗi, hệ thống đang bận. Bạn thử lại sau ít phút nhé!";
-    }
+    return cleanMarkdownText(answer.trim());
 }
 
 export async function generateRagReply(userText: string): Promise<string> {
-    // Nếu chưa ingest KB (chưa có GEMINI_API_KEY hoặc store rỗng), bỏ qua RAG luôn
+    const trimmed = userText.trim();
+
+    // Nếu tin nhắn quá ngắn (1-2 ký tự hoặc chỉ là chữ số đơn lẻ như 0, 1, 2...) -> Trả về form menu mặc định ngay
+    if (trimmed.length <= 2 || /^\d{1,2}$/.test(trimmed)) {
+        return DEFAULT_UNKNOWN_REPLY;
+    }
+
+    // 1. Thử tìm câu trả lời chính xác bằng thuật toán từ khóa từ KB (tốc độ 0ms, 100% chuẩn kịch bản, không rò rỉ prompt AI)
+    const directMatch = findDirectFaqMatch(userText);
+    if (directMatch) {
+        console.log(`[ragEngine] Khớp từ khóa trực tiếp từ KB cho câu: "${userText}"`);
+        return cleanMarkdownText(directMatch);
+    }
+
+    // 2. Nếu không khớp từ khóa trực tiếp -> Tìm kiếm theo Vector Store Similarity (RAG)
     let results;
     try {
         const queryEmbedding = await getEmbedding(userText, "RETRIEVAL_QUERY");
         results = queryStore(queryEmbedding, TOP_K);
     } catch (err: any) {
-        console.warn("[ragEngine] Không query được KB, chuyển sang AI trả lời tự do:", err.message);
-        return callGemini(
-            `Bạn là trợ lý chăm sóc khách hàng qua Zalo OA, trả lời ngắn gọn, thân thiện, tiếng Việt. Câu hỏi của khách: "${userText}"`,
-            true // bật search vì không có context nào để dựa vào
-        );
+        console.warn("[ragEngine] Lỗi query KB:", err.message);
+        return DEFAULT_UNKNOWN_REPLY;
     }
 
     const bestScore = results[0]?.score ?? 0;
     console.log(`[ragEngine] Best match score: ${bestScore.toFixed(3)} (threshold: ${SIMILARITY_THRESHOLD})`);
 
     if (results.length === 0 || bestScore < SIMILARITY_THRESHOLD) {
-        // Không tìm thấy gì đủ liên quan trong KB -> để AI trả lời tự do,
-        // bật Google Search để có thông tin thực tế/cập nhật thay vì chỉ đoán
-        return callGemini(
-            `Bạn là trợ lý chăm sóc khách hàng qua Zalo OA, trả lời ngắn gọn, thân thiện, tiếng Việt. Nếu cần, hãy tìm kiếm thông tin thực tế để trả lời chính xác. Câu hỏi của khách: "${userText}"`,
-            true
-        );
+        // Không tìm thấy nội dung đủ liên quan trong KB -> Trả về form menu hỗ trợ mặc định
+        return DEFAULT_UNKNOWN_REPLY;
     }
 
-    // Có nội dung liên quan trong KB -> bắt AI trả lời DỰA TRÊN context này,
-    // không bật search để tránh trộn nguồn ngoài KB
-    const context = results.map((r) => r.chunk.text).join("\n---\n");
-
-    const prompt = `Bạn là trợ lý chăm sóc khách hàng qua Zalo OA. Dựa CHÍNH XÁC vào thông tin tham khảo dưới đây để trả lời câu hỏi của khách, ngắn gọn, thân thiện, tiếng Việt. Nếu thông tin tham khảo không đủ để trả lời chính xác, hãy nói rõ là bạn sẽ chuyển cho nhân viên hỗ trợ thêm, không tự bịa thông tin.
-
-Thông tin tham khảo:
-${context}
-
-Câu hỏi của khách: "${userText}"`;
-
-    return callGemini(prompt, false);
+    // 3. Trích xuất trực tiếp câu trả lời chuẩn từ Chunk có điểm số cao nhất
+    return extractAnswerFromChunk(results[0].chunk.text);
 }

@@ -121,3 +121,149 @@ export async function sendTextMessage(userId: string, text: string): Promise<voi
         throw err;
     }
 }
+
+export async function notifyAdmin(text: string): Promise<void> {
+    const adminUserId = process.env.ZALO_ADMIN_USER_ID;
+    if (!adminUserId) {
+        console.log("[zaloClient] Bỏ qua gửi admin (Chưa cấu hình ZALO_ADMIN_USER_ID trong .env)");
+        return;
+    }
+
+    try {
+        await sendTextMessage(adminUserId, text);
+        console.log("[zaloClient] Đã gửi thông báo cho Admin thành công!");
+    } catch (err: any) {
+        console.error("[zaloClient] Lỗi khi gửi thông báo cho Admin:", err.message);
+    }
+}
+
+export async function sendImageMessage(userId: string, imageUrl: string): Promise<void> {
+    if (!imageUrl) return;
+    const token = await ensureValidToken();
+
+    try {
+        await axios.post(
+            "https://openapi.zalo.me/v3.0/oa/message/cs",
+            {
+                recipient: { user_id: userId },
+                message: {
+                    attachment: {
+                        type: "template",
+                        payload: {
+                            template_type: "media",
+                            elements: [
+                                {
+                                    media_type: "image",
+                                    url: imageUrl,
+                                },
+                            ],
+                        },
+                    },
+                },
+            },
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    access_token: token,
+                },
+            }
+        );
+        console.log(`[zaloClient] Đã gửi ảnh thành công tới user: ${userId}`);
+    } catch (err: any) {
+        console.error("[zaloClient] Gửi ảnh thất bại:", err.response?.data || err.message);
+    }
+}
+
+let cachedNoiQuyAttachmentId: string | null = null;
+
+export async function uploadLocalImageToZalo(filePath: string): Promise<string | null> {
+    if (!fs.existsSync(filePath)) {
+        console.error("[zaloClient] File ảnh không tồn tại:", filePath);
+        return null;
+    }
+
+    try {
+        const token = await ensureValidToken();
+
+        const res = await axios.postForm(
+            "https://openapi.zalo.me/v2.0/oa/upload/image",
+            {
+                file: fs.createReadStream(filePath),
+            },
+            {
+                headers: {
+                    access_token: token,
+                },
+            }
+        );
+
+        if (res.data?.error === 0 && res.data?.data?.attachment_id) {
+            console.log("[zaloClient] Upload ảnh noiQuy.jpg lên Zalo thành công! attachment_id:", res.data.data.attachment_id);
+            return res.data.data.attachment_id;
+        } else {
+            console.warn("[zaloClient] Kết quả upload ảnh Zalo:", res.data);
+            return res.data?.data?.attachment_id || null;
+        }
+    } catch (err: any) {
+        console.error("[zaloClient] Lỗi upload ảnh Zalo:", err.response?.data || err.message);
+        return null;
+    }
+}
+
+export async function sendHouseRulesImage(userId: string): Promise<void> {
+    const localPath = path.join(__dirname, "..", "public", "noiQuy.jpg");
+    const fallbackKbPath = path.join(__dirname, "..", "data", "knowledge-base", "noiQuy.jpg");
+    const targetPath = fs.existsSync(localPath) ? localPath : fallbackKbPath;
+
+    if (!fs.existsSync(targetPath)) {
+        console.warn("[zaloClient] Không tìm thấy file noiQuy.jpg tại:", targetPath);
+        return;
+    }
+
+    // 1. Thử upload trực tiếp file ảnh local lên Zalo OA CDN lấy attachment_id
+    if (!cachedNoiQuyAttachmentId) {
+        cachedNoiQuyAttachmentId = await uploadLocalImageToZalo(targetPath);
+    }
+
+    if (cachedNoiQuyAttachmentId) {
+        const token = await ensureValidToken();
+        try {
+            await axios.post(
+                "https://openapi.zalo.me/v3.0/oa/message/cs",
+                {
+                    recipient: { user_id: userId },
+                    message: {
+                        attachment: {
+                            type: "template",
+                            payload: {
+                                template_type: "media",
+                                elements: [
+                                    {
+                                        media_type: "image",
+                                        attachment_id: cachedNoiQuyAttachmentId,
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        access_token: token,
+                    },
+                }
+            );
+            console.log(`[zaloClient] Đã gửi ảnh noiQuy.jpg thành công tới user: ${userId}`);
+            return;
+        } catch (err: any) {
+            console.error("[zaloClient] Gửi ảnh theo attachment_id thất bại:", err.response?.data || err.message);
+        }
+    }
+
+    // 2. Dự phòng: Nếu có NOI_QUY_IMAGE_URL trong .env -> Gửi theo URL
+    const imageUrl = process.env.NOI_QUY_IMAGE_URL;
+    if (imageUrl) {
+        await sendImageMessage(userId, imageUrl);
+    }
+}
