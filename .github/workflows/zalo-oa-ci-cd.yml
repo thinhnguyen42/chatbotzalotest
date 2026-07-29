@@ -37,12 +37,6 @@ jobs:
           corepack enable
           corepack prepare "pnpm@${PNPM_VERSION}" --activate
 
-      - name: Prepare pnpm build approvals
-        run: |
-          if [ ! -f pnpm-workspace.yaml ]; then
-            printf "allowBuilds:\n  '@nestjs/core': true\n  esbuild: true\n  protobufjs: true\n" > pnpm-workspace.yaml
-          fi
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
