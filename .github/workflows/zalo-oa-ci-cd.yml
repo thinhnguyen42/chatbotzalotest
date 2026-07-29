@@ -36,13 +36,3 @@ jobs:
           tags: |
             ghcr.io/smart-home-sh/sunhavens-zalo-oa:${{ github.sha }}
             ghcr.io/smart-home-sh/sunhavens-zalo-oa:latest
-
-      - name: Update image tag in infrastructure
-        env:
-          INFRA_DISPATCH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
-        run: |
-          curl -X POST \
-            -H "Authorization: Bearer $INFRA_DISPATCH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/Smart-Home-SH/infrastructure/dispatches \
-            -d '{"event_type":"update-image","client_payload":{"app":"zalooa","image":"ghcr.io/smart-home-sh/sunhavens-zalo-oa:${{ github.sha }}"}}'
