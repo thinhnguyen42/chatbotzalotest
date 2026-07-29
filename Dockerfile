@@ -8,8 +8,8 @@ RUN corepack enable && corepack prepare pnpm@9.12.2 --activate
 
 WORKDIR /app
 
-# Copy package definitions & lockfiles
-COPY package.json pnpm-lock.yaml ./
+# Copy package definitions, lockfiles & pnpm config
+COPY package.json pnpm-lock.yaml .npmrc* ./
 
 # Install all dependencies (including devDependencies needed for build)
 RUN pnpm install --frozen-lockfile
