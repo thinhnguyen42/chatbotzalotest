@@ -4,7 +4,7 @@
 FROM node:24-alpine AS builder
 
 # Enable Corepack for pnpm
-RUN corepack enable && corepack prepare pnpm@11.0.8 --activate
+RUN corepack enable && corepack prepare pnpm@9.12.2 --activate
 
 WORKDIR /app
 

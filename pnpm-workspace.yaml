@@ -1,0 +1,6 @@
+packages:
+  - '.'
+allowBuilds:
+  '@nestjs/core': true
+  esbuild: true
+  protobufjs: true

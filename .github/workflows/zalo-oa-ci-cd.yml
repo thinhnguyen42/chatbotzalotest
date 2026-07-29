@@ -10,7 +10,7 @@ env:
   IMAGE_NAME: ghcr.io/smart-home-sh/sunhavens-zalo-oa
   INFRA_REPOSITORY: Smart-Home-SH/infrastructure
   INFRA_PATCH_FILE: k8s/overlays/staging/patch-zalo-oa-image.yaml
-  PNPM_VERSION: 11.0.8
+  PNPM_VERSION: 9.12.2
 
 jobs:
   ci:
