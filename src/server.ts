@@ -23,7 +23,7 @@ app.use(
 // Nhớ ĐỔI TÊN file trong /public thành đúng tên mà Zalo yêu cầu
 app.use(express.static(path.join(__dirname, "..", "public")));
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3002;
 
 // Zalo sẽ POST vào đây mỗi khi có sự kiện (tin nhắn, follow, ...)
 app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) => {
@@ -60,7 +60,12 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
     }
 });
 
-// Endpoint kiểm tra server sống
+// Kubernetes liveness/readiness probe endpoint
+app.get("/healthz", (_req: Request, res: Response) => {
+    res.json({ status: "ok" });
+});
+
+// Legacy health check (kept for backwards compat)
 app.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok" });
 });

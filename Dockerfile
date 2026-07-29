@@ -32,7 +32,7 @@ FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3002
 
 # Copy production artifacts and dependencies from builder stage
 COPY --from=builder /app/package.json ./
@@ -48,6 +48,6 @@ RUN chown -R node:node /app
 
 USER node
 
-EXPOSE 3000
+EXPOSE 3002
 
 CMD ["node", "dist/server.js"]
