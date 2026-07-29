@@ -1,0 +1,114 @@
+name: zalo-oa-ci-cd
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: ghcr.io/smart-home-sh/sunhavens-zalo-oa
+  INFRA_REPOSITORY: Smart-Home-SH/infrastructure
+  INFRA_PATCH_FILE: k8s/overlays/staging/patch-zalo-oa-image.yaml
+  PNPM_VERSION: 11.0.8
+
+jobs:
+  ci:
+    runs-on:
+      - self-hosted
+      - k3s
+      - staging
+      - shared
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+
+      - name: Prepare pnpm build approvals
+        run: |
+          if [ ! -f pnpm-workspace.yaml ]; then
+            printf "allowBuilds:\n  '@nestjs/core': true\n  esbuild: true\n  protobufjs: true\n" > pnpm-workspace.yaml
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Validate container build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: sunhavens-zalo-oa:ci
+
+  publish-and-promote:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on:
+      - self-hosted
+      - k3s
+      - staging
+      - shared
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check out infrastructure repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.INFRA_REPOSITORY }}
+          path: infrastructure
+          token: ${{ secrets.INFRA_REPO_TOKEN }}
+
+      - name: Promote staging image
+        working-directory: infrastructure
+        run: |
+          ./scripts/update-image-tag.sh zalo-oa "${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+          git config user.name github-actions
+          git config user.email github-actions@users.noreply.github.com
+          git add "${{ env.INFRA_PATCH_FILE }}"
+          git commit -m "chore: promote zalo-oa image sha-${{ github.sha }}" || exit 0
+          git push
