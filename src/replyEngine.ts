@@ -15,23 +15,12 @@ interface Rule {
     reply: string;
 }
 
-const GREETING_REPLY = `Xin chào! Rất vui được hỗ trợ bạn.
-Bạn có thể nhập từ khóa cần hỗ trợ dưới đây ạ:
-🔹 Dịch vụ
-🔹 Bảng giá
-🔹 Khuyến mãi
-🔹 Đặt lịch
-🔹 Liên hệ
-🔹 Hướng dẫn
-🔹 Bảo hành
-🔹 Hỗ trợ
-🔹 Địa chỉ
-🔹 Giờ làm việc`;
+const GREETING_REPLY = `Xin chào! Rất vui được hỗ trợ bạn. Mình là quản gia của Sunhavens. Bạn cần hỗ trợ gì ạ!!`;
 
 const RULES: Rule[] = [
     {
-        // Nhận diện mọi cách chào (xin chào, chào, hello, hi, chao, heluu, chào bạn, chào em, chào ad, ...)
-        match: (t) => /^(xin chào|chào|chào bot|hello|hi|heluu|chào bạn|chao|hii+|chào em|chào ad)\b/i.test(t.trim()),
+        // Nhận diện mọi cách chào và từ khóa "hỗ trợ", "trợ giúp", "help"
+        match: (t) => /^(xin chào|chào|chào bot|hello|hi|heluu|chào bạn|chao|hii+|chào em|chào ad|hỗ trợ|trợ giúp|help)\b/i.test(t.trim()) || /^(hỗ trợ|trợ giúp|help)$/i.test(t.trim()),
         reply: GREETING_REPLY,
     },
     {

@@ -178,6 +178,10 @@ Dạ bên em hiện chưa hỗ trợ xuất hóa đơn đỏ (VAT) ạ.
 
 Báo hỏng thiết bị
 Áp dụng khi khách hỏi hoặc báo:
+Hư hỏng.
+Bị hư hỏng.
+Báo hư hỏng.
+Bị hư.
 Máy lạnh không lạnh.
 Máy giặt hỏng.
 Tủ lạnh không hoạt động.

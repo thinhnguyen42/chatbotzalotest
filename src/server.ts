@@ -54,7 +54,7 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                 const isEmergency = (/\b(cháy nhà|bị cháy|đang cháy|chập điện|hỏa hoạn|nổ|cứu|khẩn cấp|rò rỉ|báo cháy|tai nạn)\b|\bcháy\b/i.test(userText)) && !/\b(phòng cháy|pccc)\b/i.test(userText);
                 const isNoiseComplaint = /\b(ồn|ồn ào|tiếng ồn|hàng xóm ồn|mở nhạc to|karaoke|hát hò)\b/i.test(userText);
                 const isRoomNumber = /^(phòng\s*|p\.?\s*)?\d{3,4}$/i.test(userText.trim());
-                const isIssueReport = /hỏng|mất điện|mất nước|sự cố|báo hỏng|không lạnh|bị kẹt|rò rỉ/i.test(userText);
+                const isIssueReport = /\b(hư|hỏng|hư hỏng|bị hư|bị hỏng|báo hư|sự cố|báo hỏng|không lạnh|bị kẹt|rò rỉ|chảy nước|không chạy|mất điện|mất nước)\b/i.test(userText);
 
                 if (isEmergency) {
                     const emergencyNotice = `🚨🚨🚨 [CẢNH BÁO KHẨN CẤP - XỬ LÝ NGAY] 🚨🚨🚨\n👤 Người gửi ID: ${userId}\n💬 Nội dung tin nhắn: "${userText}"\n⏰ Thời gian: ${new Date().toLocaleString("vi-VN")}\n👉 Ban quản lý/Admin vui lòng liên hệ khách hàng hoặc kiểm tra xử lý gấp!`;

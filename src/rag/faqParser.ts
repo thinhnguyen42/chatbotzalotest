@@ -138,7 +138,7 @@ export function findDirectFaqMatch(userText: string): string | null {
         addMatch(items.find((i) => /tổng chi phí/i.test(i.topic)));
     }
 
-    if (/\b(báo hỏng|máy lạnh|máy giặt|tủ lạnh|khóa cửa|đèn hỏng|mất điện|mất nước)\b/i.test(cleanUserText)) {
+    if (/\b(báo hỏng|hư hỏng|bị hư|bị hỏng|hư|hỏng|báo hư|sự cố|máy lạnh|máy giặt|tủ lạnh|khóa cửa|đèn hỏng|mất điện|mất nước|chảy nước|không chạy)\b/i.test(cleanUserText)) {
         addMatch(items.find((i) => /báo hỏng/i.test(i.topic)));
     }
 

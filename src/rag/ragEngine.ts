@@ -36,8 +36,7 @@ Bạn có thể nhập từ khóa cần hỗ trợ dưới đây ạ:
 🔹 Hướng dẫn
 🔹 Bảo hành
 🔹 Hỗ trợ
-🔹 Địa chỉ
-🔹 Giờ làm việc`;
+🔹 Địa chỉ`;
 
 function extractAnswerFromChunk(chunkText: string): string {
     if (!chunkText) return "";
