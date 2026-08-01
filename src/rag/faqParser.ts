@@ -158,6 +158,10 @@ export function findDirectFaqMatch(userText: string): string | null {
         addMatch(items.find((i) => /chất cấm/i.test(i.topic)));
     }
 
+    if (/\b(địa chỉ|vị trí|chỉ đường|bản đồ|ở đâu|địa chỉ nhà|tòa nhà ở đâu)\b/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /địa chỉ/i.test(i.topic)));
+    }
+
     if (matchedAnswers.length > 0) {
         return matchedAnswers.join("\n\n");
     }

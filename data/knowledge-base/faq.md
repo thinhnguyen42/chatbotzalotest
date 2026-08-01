@@ -9,7 +9,13 @@ Có bếp không?
 Cho mình xem nội thất phòng.
 
 Chatbot:
-Để em kiểm tra nội thất của phòng mình nhé 😊 Bạn vui lòng cho em xin số phòng để em gửi danh sách nội thất của phòng ạ.
+🛋️ Full nội thất – Chỉ cần xách vali vào ở
+Máy lạnh
+Máy giặt riêng
+Tủ lạnh
+Tủ quần áo
+Kệ bếp
+Máy hút mùi
 
 Nội quy nhà
 Áp dụng khi khách hỏi:
@@ -203,3 +209,19 @@ Rò rỉ nước nghiêm trọng.
 Chatbot:
 🚨 Đây là tình huống khẩn cấp. Bạn vui lòng ngắt nguồn điện/nước (nếu an toàn) và liên hệ trực tiếp chủ nhà ngay để được hỗ trợ nhanh nhất.
 Liên hệ SDT: 123456789, để được hỗ trợ sớm nhất.
+
+Địa chỉ
+Áp dụng khi khách hỏi:
+Địa chỉ ở đâu?
+Tòa nhà ở đâu?
+Vị trí tòa nhà.
+Cho xin địa chỉ.
+Chỉ đường.
+Vị trí.
+Địa chỉ.
+Bản đồ.
+
+Chatbot:
+📍 Địa chỉ tòa nhà: SunHavens Phan Bá Vành, Cát Lái, TP. Hồ Chí Minh.
+🗺️ Bạn có thể xem vị trí chi tiết và chỉ đường trên Google Maps tại đây:
+https://www.google.com/maps/place/SunHavens+Phan+B%C3%A1+V%C3%A0nh,+Smart+Apartment/@10.7743296,106.7585988,19z/data=!3m1!4b1!4m14!1m7!3m6!1s0x317525c56e38559f:0xb225e55d07b9dbb0!2zMzggUGhhbiBCw6EgVsOgbmgsIEPDoXQgTMOhaSwgSOG7kyBDaMOtIE1pbmgsIFZp4buHdCBOYW0!3b1!8m2!3d10.773279!4d106.7580999!3m5!1s0x3175250025b41f75:0x6618374f096c0ddc!8m2!3d10.7743296!4d106.7592439!16s%2Fg%2F11ntkxty1t?entry=ttu&g_ep=EgoyMDI2MDcyNy4wIKXMDSoASAFQAw%3D%3D
