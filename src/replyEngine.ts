@@ -15,7 +15,17 @@ interface Rule {
     reply: string;
 }
 
-const GREETING_REPLY = `Xin chào! Rất vui được hỗ trợ bạn. Mình là quản gia của Sunhavens. Bạn cần hỗ trợ gì ạ!!`;
+const GREETING_REPLY = `Xin chào bạn! Quản gia AI của SunHavens rất vui được hỗ trợ bạn. 🥰
+
+Hiện tại, bạn đang quan tâm đến thông tin nào của căn hộ ạ? Bạn có thể gõ trực tiếp các từ khóa này để em gửi thông tin ngay lập tức nhé:
+📍 [Địa chỉ] – Xem vị trí chính xác của tòa nhà.
+💰 [Chi phí] – Xem tiền điện, nước, phí dịch vụ hằng tháng.
+📜 [Nội quy nhà] – Xem quy định giờ giấc, bạn bè, nuôi pet.
+🔥 [PCCC] – Hướng dẫn an toàn phòng cháy chữa cháy.
+🛠️ [Bảo trì] – Báo sự cố hư hỏng trang thiết bị trong phòng.
+📞 [Liên hệ] – Lấy số hotline ban quản lý tòa nhà.
+
+Nếu bạn có câu hỏi khác, cứ nhắn trực tiếp vào đây, em sẽ hỗ trợ bạn ngay nha!`;
 
 const RULES: Rule[] = [
     {

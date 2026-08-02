@@ -86,80 +86,64 @@ export function findDirectFaqMatch(userText: string): string | null {
     };
 
     // 2. Thu thập tất cả các chủ đề khớp từ khóa trong tin nhắn (cho phép trả lời nhiều nội dung cùng lúc)
-    if (/\b(phòng cháy|pccc|quy định phòng cháy|nội quy phòng cháy)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /^phòng cháy$/i.test(i.topic.trim())));
+    if (/phòng cháy|pccc|quy định phòng cháy|nội quy phòng cháy/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Phòng cháy chữa cháy/i.test(i.topic)));
     }
 
-    if (/\b(hút thuốc|thuốc lá)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /phòng cháy|hút thuốc/i.test(i.topic) || i.questions.some((q) => q.includes("hút thuốc"))));
+    if (/thú cưng|chó|mèo|pet|số người|mấy người|người ở/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Số người ở và Thú cưng/i.test(i.topic)));
     }
 
-    if (/\b(thú cưng|chó|mèo|pet)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /thú cưng/i.test(i.topic)));
+    if (/ồn|tiếng ồn|hàng xóm ồn|mở nhạc to|karaoke|hát hò/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Nội quy nhà/i.test(i.topic)));
     }
 
-    if (/\b(ồn|ồn ào|tiếng ồn|hàng xóm ồn|mở nhạc to|karaoke|hát hò)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /tiếng ồn|ồn/i.test(i.topic)));
+    if (/nội quy|quy định/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Nội quy nhà/i.test(i.topic)));
     }
 
-    if (/\b(nội quy|quy định)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /nội quy/i.test(i.topic)));
+    if (/gửi xe|xe máy|đỗ xe|phí xe/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Thông tin Đỗ xe/i.test(i.topic)));
     }
 
-    if (/\b(điện|giá điện|tiền điện)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /tiền điện/i.test(i.topic)));
+    if (/phí dịch vụ|chi phí|tiền điện|tiền nước/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Phí dịch vụ/i.test(i.topic)));
     }
 
-    if (/\b(nước|tiền nước|giá nước)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /tiền nước/i.test(i.topic)));
+    if (/thanh toán|chuyển khoản|tiền mặt|cú pháp thanh toán/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Phương thức thanh toán/i.test(i.topic)));
     }
 
-    if (/\b(gửi xe|xe máy|đỗ xe|phí xe)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /gửi xe/i.test(i.topic)));
+    if (/bảo trì|báo hỏng|hư hỏng|bị hư|bị hỏng|hư|hỏng|báo hư|sự cố|máy lạnh không|máy giặt|tủ lạnh|khóa cửa|rò rỉ/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Báo hỏng thiết bị/i.test(i.topic)));
     }
 
-    if (/\b(dịch vụ|phí dịch vụ|wifi)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /phí dịch vụ/i.test(i.topic)));
+    if (/thuê phòng|phòng trống|xem phòng|đặt phòng|xem nhà|thuê nhà/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Hỏi thuê phòng/i.test(i.topic)));
     }
 
-    if (/\b(biên lai|hóa đơn|vat|biên nhận|gửi biên lai)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /gửi biên lai|hóa đơn/i.test(i.topic)));
+    if (/gia hạn|hạn hợp đồng/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Gia hạn hợp đồng/i.test(i.topic)));
     }
 
-    if (/\b(thanh toán|chuyển khoản|tiền mặt|cú pháp thanh toán)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /^thanh toán$/i.test(i.topic.trim())));
+    if (/trả phòng|check-out|checkout|hoàn cọc|trả cọc|bàn giao phòng/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Trả phòng/i.test(i.topic)));
     }
 
-    if (/\b(chưa thanh toán|gia hạn|xin gia hạn|đóng trễ|khất)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /chưa thanh toán/i.test(i.topic)));
+    if (/wifi|internet|mật khẩu wifi|pass wifi|tên wifi/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Wifi/i.test(i.topic)));
     }
 
-    if (/\b(tổng chi phí|hàng tháng đóng những gì|chi phí hàng tháng|khoản đóng hàng tháng)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /tổng chi phí/i.test(i.topic)));
+    if (/quên mật khẩu|quên mã số|mất thẻ|mất thẻ từ|làm lại thẻ|mất chìa khóa/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Quên mật khẩu/i.test(i.topic)));
     }
 
-    if (/\b(báo hỏng|hư hỏng|bị hư|bị hỏng|hư|hỏng|báo hư|sự cố|máy lạnh|máy giặt|tủ lạnh|khóa cửa|đèn hỏng|mất điện|mất nước|chảy nước|không chạy)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /báo hỏng/i.test(i.topic)));
+    if (/địa chỉ|vị trí|chỉ đường|bản đồ|ở đâu|địa chỉ nhà|tòa nhà ở đâu/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Địa chỉ/i.test(i.topic)));
     }
 
-    if (/\b(giờ giấc|mấy giờ|giới nghiêm)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /giờ giấc/i.test(i.topic)));
-    }
-
-    if (/\b(khách|người lạ|bạn đến chơi|dẫn bạn)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /khách ghé chơi/i.test(i.topic)));
-    }
-
-    if (/\b(hành lang|để giày|ngoài cửa)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /hành lang/i.test(i.topic)));
-    }
-
-    if (/\b(chất cấm|ma túy|cần sa|bóng cười)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /chất cấm/i.test(i.topic)));
-    }
-
-    if (/\b(địa chỉ|vị trí|chỉ đường|bản đồ|ở đâu|địa chỉ nhà|tòa nhà ở đâu)\b/i.test(cleanUserText)) {
-        addMatch(items.find((i) => /địa chỉ/i.test(i.topic)));
+    if (/hotline|liên hệ|số điện thoại|chăm sóc khách hàng|số quản lý/i.test(cleanUserText)) {
+        addMatch(items.find((i) => /Liên hệ/i.test(i.topic)));
     }
 
     if (matchedAnswers.length > 0) {
