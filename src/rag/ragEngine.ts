@@ -26,20 +26,20 @@ function cleanMarkdownText(text: string): string {
         .trim();
 }
 
-const DEFAULT_UNKNOWN_REPLY = `🤖 Quản gia AI thông báo:
+const DEFAULT_UNKNOWN_REPLY = `Quản gia AI thông báo:
 Dạ, câu hỏi này nằm ngoài phạm vi dữ liệu hiện tại của em rồi ạ. 
 
-📞 Hỗ trợ gấp: Bấm gọi ngay Hotline Quản lý tòa nhà: 0123456789 nếu cần xử lý gấp nhé! Nhân viên cũng đang vào check tin nhắn để rep bạn liền ạ.
+Hỗ trợ gấp: Bấm gọi ngay Hotline Quản lý tòa nhà: 0123456789 nếu cần xử lý gấp nhé! Nhân viên cũng đang vào check tin nhắn để rep bạn liền ạ.
 
-📌 Thông tin tra cứu nhanh: Hiện tại em có thể hỗ trợ bạn ngay các thông tin sau. Bạn chỉ cần gõ trực tiếp các từ khóa dưới đây, em sẽ gửi phản hồi lập tức:
-📍 [Địa chỉ] – Xem vị trí chính xác của tòa nhà.
-💰 [Chi phí] – Xem tiền điện, nước, phí dịch vụ hằng tháng.
-📜 [Nội quy nhà] – Xem quy định giờ giấc, bạn bè, nuôi pet.
-🔥 [PCCC] – Hướng dẫn an toàn phòng cháy chữa cháy.
-🛠️ [Bảo trì] – Báo sự cố hư hỏng trang thiết bị trong phòng.
-📞 [Liên hệ] – Lấy số hotline ban quản lý tòa nhà.
+Thông tin tra cứu nhanh: Hiện tại em có thể hỗ trợ bạn ngay các thông tin sau. Bạn chỉ cần gõ trực tiếp các từ khóa dưới đây, em sẽ gửi phản hồi lập tức:
+- [Địa chỉ] - Xem vị trí chính xác của tòa nhà.
+- [Chi phí] - Xem tiền điện, nước, phí dịch vụ hằng tháng.
+- [Nội quy nhà] - Xem quy định giờ giấc, bạn bè, nuôi pet.
+- [PCCC] - Hướng dẫn an toàn phòng cháy chữa cháy.
+- [Bảo trì] - Báo sự cố hư hỏng trang thiết bị trong phòng.
+- [Liên hệ] - Lấy số hotline ban quản lý tòa nhà.
 
-Bạn đợi bên em một xíu xiu nhé, nhân viên sẽ hỗ trợ bạn ngay đây ạ! ❤️`;
+Bạn đợi bên em một xíu xiu nhé, nhân viên sẽ hỗ trợ bạn ngay đây ạ!`;
 
 function extractAnswerFromChunk(chunkText: string): string {
     if (!chunkText) return "";

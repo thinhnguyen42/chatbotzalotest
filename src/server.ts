@@ -57,15 +57,15 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                 const isIssueReport = /\b(hư|hỏng|hư hỏng|bị hư|bị hỏng|báo hư|sự cố|báo hỏng|không lạnh|bị kẹt|rò rỉ|chảy nước|không chạy|mất điện|mất nước)\b/i.test(userText);
 
                 if (isEmergency) {
-                    const emergencyNotice = `🚨🚨🚨 [CẢNH BÁO KHẨN CẤP - XỬ LÝ NGAY] 🚨🚨🚨\n👤 Người gửi ID: ${userId}\n💬 Nội dung tin nhắn: "${userText}"\n⏰ Thời gian: ${new Date().toLocaleString("vi-VN")}\n👉 Ban quản lý/Admin vui lòng liên hệ khách hàng hoặc kiểm tra xử lý gấp!`;
-                    console.log(`[server] Gửi CẢNH BÁO KHẨN CẤP cho Admin:`, emergencyNotice);
+                    const emergencyNotice = `[CANH BAO KHAN CAP - XU LY NGAY]\nNguoi gui ID: ${userId}\nNoi dung tin nhan: "${userText}"\nThoi gian: ${new Date().toLocaleString("vi-VN")}\nBan quan ly/Admin vui long lien he khach hang hoac kiem tra xu ly gap!`;
+                    console.log(`[server] Gửi CANH BAO KHAN CAP cho Admin:`, emergencyNotice);
                     await notifyAdmin(emergencyNotice);
                 } else if (isNoiseComplaint) {
-                    const noiseNotice = `🔊🔊🔊 [PHÀN NÀN TIẾNG ỒN - XỬ LÝ NGAY] 🔊🔊🔊\n👤 Khách hàng ID: ${userId}\n💬 Nội dung phàn nàn: "${userText}"\n⏰ Thời gian: ${new Date().toLocaleString("vi-VN")}\n👉 Admin/Ban quản lý vui lòng kiểm tra nhắc nhở khu vực gây ồn!`;
-                    console.log(`[server] Gửi thông báo PHÀN NÀN TIẾNG ỒN cho Admin:`, noiseNotice);
+                    const noiseNotice = `[PHAN NAN TIENG ON - XU LY NGAY]\nKhach hang ID: ${userId}\nNoi dung phan nan: "${userText}"\nThoi gian: ${new Date().toLocaleString("vi-VN")}\nAdmin/Ban quan ly vui long kiem tra nhac nho khu vuc gay on!`;
+                    console.log(`[server] Gửi thông báo PHAN NAN TIENG ON cho Admin:`, noiseNotice);
                     await notifyAdmin(noiseNotice);
                 } else if (isRoomNumber || isIssueReport) {
-                    const adminNotice = `🔔 [YÊU CẦU HỖ TRỢ / BÁO HỎNG]\n👤 Khách hàng ID: ${userId}\n💬 Nội dung: "${userText}"\n⏰ Thời gian: ${new Date().toLocaleString("vi-VN")}`;
+                    const adminNotice = `[YEU CAU HO TRO / BAO HONG]\nKhach hang ID: ${userId}\nNoi dung: "${userText}"\nThoi gian: ${new Date().toLocaleString("vi-VN")}`;
                     console.log(`[server] Gửi thông báo hỗ trợ cho Admin:`, adminNotice);
                     await notifyAdmin(adminNotice);
                 }
@@ -76,7 +76,7 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
         if (event.event_name === "follow") {
             const userId = event.follower?.id;
             if (userId) {
-                await sendTextMessage(userId, "Cảm ơn bạn đã quan tâm OA của mình! 🎉");
+                await sendTextMessage(userId, "Cảm ơn bạn đã quan tâm OA của mình!");
             }
         }
 
