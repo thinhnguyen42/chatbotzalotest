@@ -20,34 +20,49 @@ export function verifyZaloSignature(
     const signatureHeader = req.header("X-ZEvent-Signature") || "";
     const rawBody: string = (req as any).rawBody || "";
 
+    // 1. Nếu cấu hình cho phép bypass khi dev/test local
+    if (process.env.BYPASS_ZALO_VERIFY === "true") {
+        console.log("[verifyZaloSignature] BYPASS_ZALO_VERIFY=true -> Bỏ qua kiểm tra chữ ký cho dev/test local");
+        return next();
+    }
+
+    // 2. Nếu thiếu Secret Key trong .env
     if (!oaSecretKey) {
-        console.warn("[verifyZaloSignature] Thiếu ZALO_OA_SECRET_KEY trong .env - bỏ qua verify (KHÔNG an toàn cho production)");
+        console.warn("[verifyZaloSignature] Thiếu ZALO_OA_SECRET_KEY trong .env -> Bỏ qua verify (KHÔNG an toàn cho production)");
+        return next();
+    }
+
+    // 3. Khi Zalo Developer bấm "Kiểm tra / Cập nhật Webhook URL", Zalo sẽ gửi ping POST không có X-ZEvent-Signature
+    // Để Zalo nhận về HTTP 200 OK và xác nhận URL thành công, ta cho phép request này đi tiếp.
+    if (!signatureHeader) {
+        console.warn("[verifyZaloSignature] Không có X-ZEvent-Signature header (Zalo ping kiểm tra URL) -> Cho phép 200 OK");
         return next();
     }
 
     try {
-        const body = JSON.parse(rawBody);
-        const appId = body.app_id;
-        const timestamp = body.timestamp;
+        const body = JSON.parse(rawBody || "{}");
+        const appId = body.app_id || process.env.ZALO_APP_ID || "";
+        const timestamp = body.timestamp || "";
 
         const rawVerify = `${appId}${rawBody}${timestamp}${oaSecretKey}`;
         const expectedMac = crypto.createHash("sha256").update(rawVerify).digest("hex");
         const expectedHeader = `mac=${expectedMac}`;
 
-        // So sánh an toàn, tránh timing attack
+        // So sánh an toàn thời gian (timing safe)
         const isValid =
             signatureHeader.length === expectedHeader.length &&
             crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expectedHeader));
 
         if (!isValid) {
-            console.warn("[verifyZaloSignature] Chữ ký không khớp - từ chối request");
-            res.sendStatus(401);
+            console.warn("[verifyZaloSignature] ❌ Chữ ký X-ZEvent-Signature không khớp -> Từ chối request (401)");
+            res.status(401).json({ error: "Invalid X-ZEvent-Signature" });
             return;
         }
 
+        console.log("[verifyZaloSignature] ✅ Chữ ký Zalo hợp lệ!");
         next();
     } catch (err) {
-        console.error("[verifyZaloSignature] Lỗi khi verify:", err);
-        res.sendStatus(400);
+        console.error("[verifyZaloSignature] Lỗi khi verify chữ ký:", err);
+        res.status(400).json({ error: "Invalid JSON rawBody" });
     }
 }
