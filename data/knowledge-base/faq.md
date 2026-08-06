@@ -26,7 +26,7 @@ Còn phòng không?
 Chatbot:
 Cảm ơn bạn đã quan tâm đến căn hộ dịch vụ của chúng mình!
 Về thông tin phòng trống, giá thuê chi tiết và lịch hẹn xem nhà trực tiếp, bạn vui lòng liên hệ với Quản lý căn hộ qua:
-Hotline / Zalo: 0123456789
+Hotline / Zalo: 0938244695
 Bạn cứ nhắn tin hoặc gọi điện, bên mình có nhân viên trực để hỗ trợ bạn ạ. Chúc bạn một ngày tốt lành!
 
 Nội quy nhà
@@ -61,7 +61,7 @@ Sự an toàn của bạn là ưu tiên hàng đầu của Quản gia AI. Dướ
 - Thiết bị tại chỗ: Căn hộ đã được trang bị bình chữa cháy mini/hệ thống báo cháy tự động/đầu phun nước. Bình chữa cháy được đặt tại góc cầu thang của mỗi tầng.
 - Lối thoát hiểm: Sơ đồ thoát hiểm được dán sau cửa phòng / sảnh thang máy. Lối thang bộ thoát hiểm nằm ở cuối hành lang.
 - Nghiêm cấm: Không nấu ăn bằng bếp than/củi, không để vật dụng cản trở lối đi hành lang và tuyệt đối không hút thuốc trong phòng.
-- Tình huống khẩn cấp: Nếu có sự cố, hãy bấm nút báo cháy ở hành lang và gọi ngay hotline cứu hỏa 114 và liên hệ với quản lý tòa nhà qua Hotline: 0123456789 nhé.
+- Tình huống khẩn cấp: Nếu có sự cố, hãy bấm nút báo cháy ở hành lang và gọi ngay hotline cứu hỏa 114 và liên hệ với quản lý tòa nhà qua Hotline: 0938244695 nhé.
 Chúc bạn luôn có những trải nghiệm an toàn và an tâm tại đây!
 
 Báo hỏng thiết bị
@@ -96,7 +96,7 @@ Liên hệ ban quản lý.
 
 Chatbot:
 Dạ, để hỗ trợ bạn nhanh nhất trong mọi tình huống, Quản gia AI xin gửi bạn số Hotline liên hệ trực tiếp:
-Hotline Quản lý tòa nhà / Chăm sóc khách hàng: 0123456789
+Hotline Quản lý tòa nhà / Chăm sóc khách hàng: 0938244695
 Bạn có thể lưu lại số này để liên hệ trực tiếp khi cần xử lý gấp nhé!
 
 Thủ tục Gia hạn hợp đồng
