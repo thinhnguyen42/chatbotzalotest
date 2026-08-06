@@ -169,7 +169,7 @@ Mất chìa khóa.
 Chatbot:
 Dạ không sao đâu ạ, bạn bình tĩnh nhé! Để xử lý việc quên mã số hoặc mất thẻ từ, bạn làm theo hướng dẫn sau:
 - Cách 1 (Nếu dùng khóa mã số): Thử nhập lại mã số dự phòng mà em đã gửi riêng cho bạn lúc check-in.
-- Cách 2 (Khẩn cấp): Gọi ngay cho Hotline Quản lý tòa nhà: 0123456789 để nhân viên hỗ trợ mở cửa từ xa hoặc qua mở trực tiếp cho bạn.
+- Cách 2 (Khẩn cấp): Gọi ngay cho Hotline Quản lý tòa nhà: 0938244695 để nhân viên hỗ trợ mở cửa từ xa hoặc qua mở trực tiếp cho bạn.
 - Phí cấp lại thẻ (nếu làm mất thẻ từ): 100.000đ/thẻ.
 
 Phí dịch vụ
@@ -188,18 +188,27 @@ Dạ, Quản gia AI xin gửi bạn thông tin chi tiết về các chi phí sin
 - Phí gửi xe: Miễn phí đỗ xe máy (tối đa 02 xe máy/phòng).
 Ngoài tiền thuê phòng cố định, hằng tháng bạn sẽ chỉ cần thanh toán thêm các khoản chi phí sinh hoạt rõ ràng như trên thôi nhé!
 
-Số người ở và Thú cưng
+Số lượng người ở
 Áp dụng khi khách hỏi:
 Mấy người ở?
 Số lượng người ở.
+Mấy người 1 phòng?
+Ở được mấy người?
+
+Chatbot:
+Dạ, Quản gia AI xin thông tin đến bạn về quy định số lượng thành viên tại căn hộ dịch vụ của chúng mình như sau ạ:
+- Số lượng người ở: Tiêu chuẩn 2 người / phòng để đảm bảo không gian sống thoải mái nhất cho bạn ạ.
+
+Nuôi thú cưng
+Áp dụng khi khách hỏi:
 Có nuôi chó không?
 Có nuôi mèo không?
 Nuôi thú cưng.
 Nuôi pet.
+Được nuôi pet không?
 
 Chatbot:
-Dạ, Quản gia AI xin thông tin đến bạn về quy định số lượng thành viên và nuôi thú cưng tại căn hộ dịch vụ của chúng mình như sau ạ:
-- Số lượng người ở: Tiêu chuẩn 2 người / phòng để đảm bảo không gian sống thoải mái nhất cho bạn.
+Dạ, Quản gia AI xin thông tin đến bạn về quy định nuôi thú cưng tại căn hộ dịch vụ của chúng mình như sau ạ:
 - Quy định nuôi thú cưng: Căn hộ cho phép nuôi mèo, với điều kiện bé mèo đã được tiêm ngừa dại đầy đủ để đảm bảo an toàn chung cho tòa nhà ạ. (Không hỗ trợ nuôi chó ạ).
 Căn hộ rất hoan nghênh bạn và bé mèo dọn vào ở cùng nhé!
 
@@ -239,4 +248,4 @@ Rò rỉ điện.
 Rò rỉ nước nghiêm trọng.
 
 Chatbot:
-Đây là tình huống khẩn cấp. Bạn vui lòng ngắt nguồn điện/nước (nếu an toàn) và liên hệ trực tiếp chủ nhà ngay để được hỗ trợ nhanh nhất qua Hotline: 0123456789.
+Đây là tình huống khẩn cấp. Bạn vui lòng ngắt nguồn điện/nước (nếu an toàn) và liên hệ trực tiếp chủ nhà ngay để được hỗ trợ nhanh nhất qua Hotline: 0938244695.
