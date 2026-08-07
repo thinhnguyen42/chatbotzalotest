@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  chatbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zalo-chatbot
+    restart: always
+    ports:
+      - "${PORT:-3000}:3002"
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - PHOBERT_SERVICE_URL=http://phobert:5050
+      - ZALO_APP_ID=${ZALO_APP_ID}
+      - ZALO_APP_SECRET=${ZALO_APP_SECRET}
+      - ZALO_OA_SECRET_KEY=${ZALO_OA_SECRET_KEY}
+      - ZALO_REFRESH_TOKEN=${ZALO_REFRESH_TOKEN}
+      - ZALO_ACCESS_TOKEN=${ZALO_ACCESS_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ZALO_ADMIN_USER_ID=${ZALO_ADMIN_USER_ID}
+      - RAG_SIMILARITY_THRESHOLD=${RAG_SIMILARITY_THRESHOLD:-0.85}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - phobert
+
+  phobert:
+    build:
+      context: ./phobert-service
+      dockerfile: Dockerfile
+    container_name: phobert-service
+    restart: always
+    environment:
+      - PHOBERT_THRESHOLD=${PHOBERT_THRESHOLD:-0.80}
+      - PHOBERT_FAQ_PATH=/app/data/knowledge-base/faq.md
+    volumes:
+      - ./data:/app/data
+      - hf_cache:/root/.cache/huggingface
+
+volumes:
+  hf_cache:

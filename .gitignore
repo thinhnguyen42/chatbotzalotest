@@ -21,3 +21,10 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Python / PhoBERT
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+

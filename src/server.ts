@@ -97,6 +97,104 @@ app.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok" });
 });
 
+// ----------------------------------------------------------------
+// DEV-ONLY: test the reply engine locally without Zalo webhook
+// POST http://localhost:3000/test-reply
+// Body: { "message": "wifi mật khẩu là gì" }
+// ----------------------------------------------------------------
+if (process.env.NODE_ENV !== "production") {
+    // API endpoint for testing
+    app.all("/test-reply", async (req: Request, res: Response) => {
+        const userText: string = req.body?.message || (req.query?.q as string);
+        if (!userText) {
+            res.status(400).json({ error: 'Missing "message" in JSON body or "q" in query string' });
+            return;
+        }
+        console.log(`[test-reply] Testing: "${userText}"`);
+        try {
+            const reply = await generateReply(userText);
+            res.json({ input: userText, reply });
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Web Chat UI for testing directly in browser (http://localhost:3000/test)
+    app.get("/test", (_req: Request, res: Response) => {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.send(`<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Zalo OA Chatbot Tester</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #f0f2f5; margin: 0; display: flex; justify-content: center; height: 100vh; padding: 20px; }
+        .chat-container { width: 100%; max-width: 600px; background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+        .header { background: #0068ff; color: white; padding: 15px 20px; font-weight: bold; font-size: 1.1rem; }
+        .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        .msg { max-width: 80%; padding: 12px 16px; border-radius: 16px; font-size: 0.95rem; white-space: pre-wrap; line-height: 1.4; }
+        .msg.user { background: #e3f2fd; color: #0d47a1; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .msg.bot { background: #f1f0f0; color: #333; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .input-area { padding: 15px; border-top: 1px solid #eee; display: flex; gap: 10px; }
+        input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 20px; outline: none; font-size: 1rem; }
+        button { background: #0068ff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0052cc; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">💬 Zalo OA Chatbot Tester (SunHavens)</div>
+        <div class="messages" id="messages">
+            <div class="msg bot">Xin chào! Bạn gõ câu hỏi thử nghiệm vào ô bên dưới nhé.</div>
+        </div>
+        <form class="input-area" id="chatForm">
+            <input type="text" id="userInput" placeholder="Nhập câu hỏi (ví dụ: phí dịch vụ, địa chỉ, wifi...)" required autocomplete="off" />
+            <button type="submit">Gửi</button>
+        </form>
+    </div>
+    <script>
+        const form = document.getElementById('chatForm');
+        const input = document.getElementById('userInput');
+        const messages = document.getElementById('messages');
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (!text) return;
+
+            addMsg(text, 'user');
+            input.value = '';
+
+            try {
+                const res = await fetch('/test-reply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
+                const data = await res.json();
+                addMsg(data.reply || data.error, 'bot');
+            } catch (err) {
+                addMsg('Lỗi kết nối server: ' + err.message, 'bot');
+            }
+        };
+
+        function addMsg(text, sender) {
+            const div = document.createElement('div');
+            div.className = 'msg ' + sender;
+            div.textContent = text;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+    </script>
+</body>
+</html>`);
+    });
+
+    console.log("[dev] Test endpoint: POST http://localhost:3000/test-reply");
+    console.log("[dev] Test UI: OPEN http://localhost:3000/test in your browser!");
+}
+
 app.listen(PORT, () => {
     console.log(`Bot server đang chạy tại http://localhost:${PORT}`);
 });

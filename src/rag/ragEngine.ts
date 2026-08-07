@@ -1,7 +1,7 @@
-import axios from "axios";
 import { getEmbedding } from "./embeddings";
 import { queryStore } from "./vectorStore";
 import { findDirectFaqMatch } from "./faqParser";
+import { matchFaqWithPhoBert } from "./phobertClient";
 
 /**
  * Ngưỡng similarity để quyết định "có tìm thấy trong KB hay không".
@@ -29,7 +29,7 @@ function cleanMarkdownText(text: string): string {
 const DEFAULT_UNKNOWN_REPLY = `Quản gia AI thông báo:
 Dạ, câu hỏi này nằm ngoài phạm vi dữ liệu hiện tại của em rồi ạ. 
 
-Hỗ trợ gấp: Bấm gọi ngay Hotline Quản lý tòa nhà: 0123456789 nếu cần xử lý gấp nhé! Nhân viên cũng đang vào check tin nhắn để rep bạn liền ạ.
+Hỗ trợ gấp: Bấm gọi ngay Hotline Quản lý tòa nhà: 0938244695 nếu cần xử lý gấp nhé! Nhân viên cũng đang vào check tin nhắn để rep bạn liền ạ.
 
 Thông tin tra cứu nhanh: Hiện tại em có thể hỗ trợ bạn ngay các thông tin sau. Bạn chỉ cần gõ trực tiếp các từ khóa dưới đây, em sẽ gửi phản hồi lập tức:
 - [Địa chỉ] - Xem vị trí chính xác của tòa nhà.
@@ -66,7 +66,27 @@ export async function generateRagReply(userText: string): Promise<string> {
         return cleanMarkdownText(directMatch);
     }
 
-    // 2. Nếu không khớp từ khóa trực tiếp -> Tìm kiếm theo Vector Store Similarity (RAG)
+    // 2. Thử PhoBERT semantic FAQ matching (Vietnamese-optimised, no API cost)
+    try {
+        const phobertResult = await matchFaqWithPhoBert(userText);
+        if (phobertResult?.matched) {
+            console.log(
+                `[ragEngine] PhoBERT match: "${phobertResult.topic}" ` +
+                `(score=${phobertResult.score.toFixed(3)}) for: "${userText}"`
+            );
+            return cleanMarkdownText(phobertResult.answer);
+        }
+        if (phobertResult) {
+            console.log(
+                `[ragEngine] PhoBERT best score ${phobertResult.score.toFixed(3)} below threshold, ` +
+                `falling back to Gemini vector search.`
+            );
+        }
+    } catch (err: any) {
+        console.warn("[ragEngine] PhoBERT lookup failed:", err.message);
+    }
+
+    // 3. Nếu không khớp PhoBERT -> Tìm kiếm theo Vector Store Similarity (Gemini Embeddings / RAG)
     let results;
     try {
         const queryEmbedding = await getEmbedding(userText, "RETRIEVAL_QUERY");
@@ -77,13 +97,13 @@ export async function generateRagReply(userText: string): Promise<string> {
     }
 
     const bestScore = results[0]?.score ?? 0;
-    console.log(`[ragEngine] Best match score: ${bestScore.toFixed(3)} (threshold: ${SIMILARITY_THRESHOLD})`);
+    console.log(`[ragEngine] Gemini best match score: ${bestScore.toFixed(3)} (threshold: ${SIMILARITY_THRESHOLD})`);
 
     if (results.length === 0 || bestScore < SIMILARITY_THRESHOLD) {
         // Không tìm thấy nội dung đủ liên quan trong KB -> Trả về form menu hỗ trợ mặc định
         return DEFAULT_UNKNOWN_REPLY;
     }
 
-    // 3. Trích xuất trực tiếp câu trả lời chuẩn từ Chunk có điểm số cao nhất
+    // 4. Trích xuất trực tiếp câu trả lời chuẩn từ Chunk có điểm số cao nhất
     return extractAnswerFromChunk(results[0].chunk.text);
 }
