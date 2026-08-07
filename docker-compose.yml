@@ -12,6 +12,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3002
+      - BGEM3_SERVICE_URL=http://bge-m3:5051
       - PHOBERT_SERVICE_URL=http://phobert:5050
       - ZALO_APP_ID=${ZALO_APP_ID}
       - ZALO_APP_SECRET=${ZALO_APP_SECRET}
@@ -24,7 +25,21 @@ services:
     volumes:
       - ./data:/app/data
     depends_on:
+      - bge-m3
       - phobert
+
+  bge-m3:
+    build:
+      context: ./bge-m3-service
+      dockerfile: Dockerfile
+    container_name: bge-m3-service
+    restart: always
+    environment:
+      - BGEM3_THRESHOLD=${BGEM3_THRESHOLD:-0.70}
+      - BGEM3_FAQ_PATH=/app/data/knowledge-base/faq.md
+    volumes:
+      - ./data:/app/data
+      - hf_cache:/root/.cache/huggingface
 
   phobert:
     build:

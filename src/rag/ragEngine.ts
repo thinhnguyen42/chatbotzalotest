@@ -2,6 +2,7 @@ import { getEmbedding } from "./embeddings";
 import { queryStore } from "./vectorStore";
 import { findDirectFaqMatch } from "./faqParser";
 import { matchFaqWithPhoBert } from "./phobertClient";
+import { matchFaqWithBgeM3 } from "./bgeM3Client";
 
 /**
  * Ngưỡng similarity để quyết định "có tìm thấy trong KB hay không".
@@ -59,14 +60,34 @@ export async function generateRagReply(userText: string): Promise<string> {
         return DEFAULT_UNKNOWN_REPLY;
     }
 
-    // 1. Thử tìm câu trả lời chính xác bằng thuật toán từ khóa từ KB (tốc độ 0ms, 100% chuẩn kịch bản, không rò rỉ prompt AI)
+    // 1. Thử tìm câu trả lời chính xác bằng thuật toán từ khóa từ KB (tốc độ 0ms, 100% chuẩn kịch bản)
     const directMatch = findDirectFaqMatch(userText);
     if (directMatch) {
         console.log(`[ragEngine] Khớp từ khóa trực tiếp từ KB cho câu: "${userText}"`);
         return cleanMarkdownText(directMatch);
     }
 
-    // 2. Thử PhoBERT semantic FAQ matching (Vietnamese-optimised, no API cost)
+    // 2. Thử BGE-M3 Multilingual SOTA Semantic FAQ matching (port 5051)
+    try {
+        const bgeM3Result = await matchFaqWithBgeM3(userText);
+        if (bgeM3Result?.matched) {
+            console.log(
+                `[ragEngine] BGE-M3 match: "${bgeM3Result.topic}" ` +
+                `(score=${bgeM3Result.score.toFixed(3)}) for: "${userText}"`
+            );
+            return cleanMarkdownText(bgeM3Result.answer);
+        }
+        if (bgeM3Result) {
+            console.log(
+                `[ragEngine] BGE-M3 best score ${bgeM3Result.score.toFixed(3)} below threshold, ` +
+                `trying PhoBERT.`
+            );
+        }
+    } catch (err: any) {
+        console.warn("[ragEngine] BGE-M3 lookup failed:", err.message);
+    }
+
+    // 3. Thử PhoBERT semantic FAQ matching (Vietnamese-optimised, port 5050)
     try {
         const phobertResult = await matchFaqWithPhoBert(userText);
         if (phobertResult?.matched) {
@@ -86,7 +107,7 @@ export async function generateRagReply(userText: string): Promise<string> {
         console.warn("[ragEngine] PhoBERT lookup failed:", err.message);
     }
 
-    // 3. Nếu không khớp PhoBERT -> Tìm kiếm theo Vector Store Similarity (Gemini Embeddings / RAG)
+    // 4. Nếu không khớp BGE-M3 / PhoBERT -> Tìm kiếm theo Vector Store Similarity (Gemini Embeddings / RAG)
     let results;
     try {
         const queryEmbedding = await getEmbedding(userText, "RETRIEVAL_QUERY");
@@ -104,6 +125,6 @@ export async function generateRagReply(userText: string): Promise<string> {
         return DEFAULT_UNKNOWN_REPLY;
     }
 
-    // 4. Trích xuất trực tiếp câu trả lời chuẩn từ Chunk có điểm số cao nhất
+    // 5. Trích xuất trực tiếp câu trả lời chuẩn từ Chunk có điểm số cao nhất
     return extractAnswerFromChunk(results[0].chunk.text);
 }
