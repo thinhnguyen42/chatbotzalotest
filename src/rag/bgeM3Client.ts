@@ -11,7 +11,7 @@ import axios from "axios";
  */
 
 const BGEM3_URL = process.env.BGEM3_SERVICE_URL || "http://localhost:5051";
-const TIMEOUT_MS = 3000;
+const TIMEOUT_MS = 8000;
 
 export interface BgeM3MatchResult {
     matched: boolean;

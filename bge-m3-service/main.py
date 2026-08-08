@@ -35,14 +35,16 @@ from sentence_transformers import SentenceTransformer
 # ---------------------------------------------------------------------------
 
 MODEL_NAME = os.getenv("BGEM3_MODEL", "BAAI/bge-m3")
-SIMILARITY_THRESHOLD = float(os.getenv("BGEM3_THRESHOLD", "0.70"))
+SIMILARITY_THRESHOLD = float(os.getenv("BGEM3_THRESHOLD", "0.60"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 _env_faq = os.getenv("BGEM3_FAQ_PATH", "")
-if _env_faq:
+if _env_faq and Path(_env_faq).exists():
     FAQ_PATH = Path(_env_faq)
 else:
     FAQ_PATH = Path(__file__).resolve().parent.parent / "data" / "knowledge-base" / "faq.md"
+
+print(f"[bge-m3-service] FAQ Path: {FAQ_PATH} (exists: {FAQ_PATH.exists()})")
 
 # ---------------------------------------------------------------------------
 # Load model once at startup
@@ -53,30 +55,157 @@ model = SentenceTransformer(MODEL_NAME, device=DEVICE)
 print("[bge-m3-service] Model loaded successfully.")
 
 # ---------------------------------------------------------------------------
+# Vietnamese normalization (restore diacritics from unaccented input)
+# ---------------------------------------------------------------------------
+
+# Common unaccented Vietnamese -> accented mapping (word-level)
+_VI_WORD_MAP: dict[str, str] = {
+    # địa điểm
+    "dia chi": "địa chỉ", "vi tri": "vị trí", "ban do": "bản đồ",
+    "toa nha": "tòa nhà", "o dau": "ở đâu", "chi duong": "chỉ đường",
+    # chi phí
+    "phi dich vu": "phí dịch vụ", "dich vu": "dịch vụ",
+    "chi phi": "chi phí", "tien dien": "tiền điện", "tien nuoc": "tiền nước",
+    "hang thang": "hàng tháng", "phi xe": "phí xe",
+    # wifi
+    "mat khau": "mật khẩu", "wifi": "wifi", "ten wifi": "tên wifi",
+    "pass wifi": "pass wifi", "internet": "internet",
+    # thanh toán
+    "thanh toan": "thanh toán", "chuyen khoan": "chuyển khoản",
+    "tien mat": "tiền mặt", "cu phap": "cú pháp",
+    # nội quy
+    "noi quy": "nội quy", "quy dinh": "quy định", "pccc": "pccc",
+    "phong chay": "phòng cháy",
+    # thú cưng
+    "thu cung": "thú cưng", "nuoi meo": "nuôi mèo", "nuoi cho": "nuôi chó",
+    "nuoi pet": "nuôi pet", "con meo": "con mèo", "con cho": "con chó",
+    # đỗ xe
+    "gui xe": "gửi xe", "xe may": "xe máy", "do xe": "đỗ xe",
+    "bai do xe": "bãi đỗ xe",
+    # sửa chữa
+    "bao hong": "báo hỏng", "bao tri": "bảo trì", "su co": "sự cố",
+    "may lanh": "máy lạnh", "may giat": "máy giặt", "tu lanh": "tủ lạnh",
+    "khoa cua": "khóa cửa", "ro ri": "rò rỉ",
+    # thuê phòng / trả phòng
+    "thue phong": "thuê phòng", "phong trong": "phòng trống",
+    "xem phong": "xem phòng", "tra phong": "trả phòng",
+    "hoan coc": "hoàn cọc", "tra coc": "trả cọc",
+    "ban giao phong": "bàn giao phòng",
+    # gia hạn
+    "gia han": "gia hạn", "han hop dong": "hạn hợp đồng",
+    # liên hệ / khẩn cấp
+    "hotline": "hotline", "lien he": "liên hệ",
+    "khan cap": "khẩn cấp", "chay nha": "cháy nhà",
+    "chap dien": "chập điện",
+    # quên mật khẩu
+    "quen mat khau": "quên mật khẩu", "mat the": "mất thẻ",
+    "mat chia khoa": "mất chìa khóa",
+    # nội thất
+    "noi that": "nội thất", "may giat": "máy giặt",
+    # người ở
+    "so nguoi": "số người", "may nguoi": "mấy người", "nguoi o": "người ở",
+}
+
+
+def normalize_vietnamese(text: str) -> str:
+    """
+    Detect if text is unaccented Vietnamese (no diacritics beyond basic ASCII+đ)
+    and restore common words to their proper accented form using a lookup table.
+    Matching is done on multi-word phrases first (longest match first).
+    """
+    # Check if text already has Vietnamese diacritics — if so, return as-is
+    has_diacritics = bool(re.search(
+        r'[àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỷỹỵ'
+        r'ÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐƠƯẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼẾỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỶỸỴ]',
+        text
+    ))
+    if has_diacritics:
+        return text
+
+    # Sort by phrase length (longest first) to match multi-word phrases greedily
+    lowered = text.lower()
+    result = lowered
+    for unaccented, accented in sorted(_VI_WORD_MAP.items(), key=lambda x: -len(x[0])):
+        result = re.sub(r'\b' + re.escape(unaccented) + r'\b', accented, result)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # FAQ parser
 # ---------------------------------------------------------------------------
 
 def load_faq_items() -> list[dict]:
-    """Parse faq.md into a list of {topic, questions, answer} dicts."""
+    """Parse faq.md into a list of {topic, questions, answer} dicts.
+    
+    Splits the file into sections by detecting lines that look like topic headers:
+    a non-indented line immediately after a blank line that is NOT 'Chatbot:', 'Áp dụng...' etc.
+    """
     if not FAQ_PATH.exists():
         print(f"[bge-m3-service] WARNING: FAQ file not found at {FAQ_PATH}")
         return []
 
     content = FAQ_PATH.read_text(encoding="utf-8")
-    blocks = re.split(r"\n\s*\n(?=[A-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐƠƯ])", content)
+    lines = content.splitlines()
+
+    # Split into raw sections: a section starts when we see a non-empty line
+    # that is NOT a sub-header (Áp dụng / Chatbot) and follows a blank line.
+    SKIP_PREFIXES = ("Áp dụng", "Nếu khi", "Chatbot", "-", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", " ")
+
+    sections: list[list[str]] = []
+    current: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            # blank line → could be a section boundary
+            if current:
+                current.append("")
+            continue
+
+        # Detect if this is a new topic header:
+        #  - non-empty
+        #  - previous context has a blank line
+        #  - does NOT start with known sub-prefixes
+        #  - previous block has content
+        is_new_topic = (
+            current and
+            current[-1] == "" and  # last line was blank
+            not any(stripped.startswith(p) for p in SKIP_PREFIXES) and
+            not re.match(r"^Chatbot\s*(?:trả lời)?:", stripped, re.IGNORECASE) and
+            not re.match(r"^(?:Áp dụng|Nếu) ", stripped, re.IGNORECASE)
+        )
+
+        if is_new_topic:
+            sections.append([l for l in current if l or any(ll.strip() for ll in current)])
+            current = [stripped]
+        else:
+            current.append(stripped)
+
+    if current:
+        sections.append(current)
 
     items: list[dict] = []
-    for block in blocks:
-        lines = [l.strip() for l in block.strip().splitlines() if l.strip()]
-        if not lines:
+    for section in sections:
+        # Remove trailing/leading blank lines
+        while section and not section[0]:
+            section.pop(0)
+        while section and not section[-1]:
+            section.pop()
+        if not section:
             continue
-        topic = lines[0]
+
+        topic = section[0]
         questions: list[str] = []
         answer_lines: list[str] = []
         collecting_q = False
         collecting_a = False
 
-        for line in lines[1:]:
+        for line in section[1:]:
+            if not line:
+                if collecting_a:
+                    answer_lines.append("")
+                continue
             if re.match(r"^(?:Áp dụng|Nếu) (?:khi )?khách (?:hỏi|báo)?:", line, re.IGNORECASE):
                 collecting_q = True
                 collecting_a = False
@@ -192,22 +321,30 @@ def health():
 def match_faq(req: MatchRequest):
     """
     Find the best-matching FAQ answer for a query using BGE-M3 dense embeddings.
+    Automatically normalizes unaccented Vietnamese input before embedding.
     """
     threshold = req.threshold if req.threshold is not None else SIMILARITY_THRESHOLD
 
     if not faq_index:
         return MatchResponse(matched=False, answer="", topic="", question="", score=0.0)
 
-    query_emb = encode([req.query])[0]
+    # Normalize unaccented Vietnamese -> accented form for better embedding quality
+    normalized_query = normalize_vietnamese(req.query)
+    queries_to_try = [req.query]
+    if normalized_query != req.query:
+        queries_to_try.append(normalized_query)
+        print(f"[bge-m3] Normalized: '{req.query}' -> '{normalized_query}'")
 
     best_score = -1.0
     best_entry: Optional[FaqEntry] = None
 
-    for entry in faq_index:
-        score = float(torch.dot(query_emb, entry.embedding).item())
-        if score > best_score:
-            best_score = score
-            best_entry = entry
+    for q in queries_to_try:
+        query_emb = encode([q])[0]
+        for entry in faq_index:
+            score = float(torch.dot(query_emb, entry.embedding).item())
+            if score > best_score:
+                best_score = score
+                best_entry = entry
 
     if best_entry is None or best_score < threshold:
         return MatchResponse(matched=False, answer="", topic="", question="", score=best_score)
@@ -243,7 +380,8 @@ def debug_scores(req: MatchRequest):
     if not faq_index:
         return {"error": "FAQ index is empty", "faq_path": str(FAQ_PATH), "path_exists": FAQ_PATH.exists()}
 
-    query_emb = encode([req.query])[0]
+    normalized_query = normalize_vietnamese(req.query)
+    query_emb = encode([normalized_query])[0]
     results = []
     for entry in faq_index:
         score = float(torch.dot(query_emb, entry.embedding).item())

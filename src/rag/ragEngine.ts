@@ -2,7 +2,7 @@ import { getEmbedding } from "./embeddings";
 import { queryStore } from "./vectorStore";
 import { findDirectFaqMatch } from "./faqParser";
 import { matchFaqWithPhoBert } from "./phobertClient";
-import { matchFaqWithBgeM3 } from "./bgeM3Client";
+import { matchFaqWithViEncoder } from "./viEncoderClient";
 
 /**
  * Ngưỡng similarity để quyết định "có tìm thấy trong KB hay không".
@@ -67,24 +67,24 @@ export async function generateRagReply(userText: string): Promise<string> {
         return cleanMarkdownText(directMatch);
     }
 
-    // 2. Thử BGE-M3 Multilingual SOTA Semantic FAQ matching (port 5051)
+    // 2. Thử Vietnamese Bi-Encoder Semantic FAQ matching (port 5051)
     try {
-        const bgeM3Result = await matchFaqWithBgeM3(userText);
-        if (bgeM3Result?.matched) {
+        const viResult = await matchFaqWithViEncoder(userText);
+        if (viResult?.matched) {
             console.log(
-                `[ragEngine] BGE-M3 match: "${bgeM3Result.topic}" ` +
-                `(score=${bgeM3Result.score.toFixed(3)}) for: "${userText}"`
+                `[ragEngine] Vi-Encoder match: "${viResult.topic}" ` +
+                `(score=${viResult.score.toFixed(3)}) for: "${userText}"`
             );
-            return cleanMarkdownText(bgeM3Result.answer);
+            return cleanMarkdownText(viResult.answer);
         }
-        if (bgeM3Result) {
+        if (viResult) {
             console.log(
-                `[ragEngine] BGE-M3 best score ${bgeM3Result.score.toFixed(3)} below threshold, ` +
+                `[ragEngine] Vi-Encoder best score ${viResult.score.toFixed(3)} below threshold, ` +
                 `trying PhoBERT.`
             );
         }
     } catch (err: any) {
-        console.warn("[ragEngine] BGE-M3 lookup failed:", err.message);
+        console.warn("[ragEngine] Vi-Encoder lookup failed:", err.message);
     }
 
     // 3. Thử PhoBERT semantic FAQ matching (Vietnamese-optimised, port 5050)

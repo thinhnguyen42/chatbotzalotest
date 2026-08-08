@@ -1,0 +1,6 @@
+@echo off
+echo [vi-encoder] Activating venv at C:\pb ...
+call C:\pb\Scripts\activate.bat
+echo [vi-encoder] Starting service on http://localhost:5051 ...
+cd /d "%~dp0"
+uvicorn main:app --host 127.0.0.1 --port 5051 --reload
