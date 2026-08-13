@@ -1,9 +1,11 @@
 import "dotenv/config";
 import path from "path";
 import express, { Request, Response } from "express";
-import { sendTextMessage, notifyAdmin, sendImageMessage, sendHouseRulesImage } from "./zaloClient";
+import { sendTextMessage, notifyAdmin, sendImageMessage, sendHouseRulesImage, exchangeCodeAndSaveTokens } from "./zaloClient";
 import { generateReply } from "./replyEngine";
 import { verifyZaloSignature } from "./verifyZaloSignature";
+import { checkSpamGuard } from "./spamGuard";
+import { isHumanHandoverActive, setHumanHandoverMode, clearHandoverMode } from "./humanHandover";
 
 const app = express();
 
@@ -34,12 +36,45 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
     console.log("[webhook] Nhận event:", JSON.stringify(event));
 
     try {
+        // Sự kiện Admin / Nhân viên gửi tin nhắn trực tiếp cho khách qua Zalo OA Portal
+        if (event.event_name === "oa_send_text" || event.event_name === "oa_send_image") {
+            const recipientId = event.recipient?.id;
+            if (recipientId) {
+                console.log(`[server] Admin đã gửi tin nhắn cho user ${recipientId}. Tự động chuyển giao Human Handover (Tạm dừng Bot 5p).`);
+                setHumanHandoverMode(recipientId);
+            }
+            return;
+        }
+
         // Sự kiện người dùng gửi tin nhắn văn bản cho OA
         if (event.event_name === "user_send_text") {
             const userId = event.sender?.id;
             const userText = event.message?.text;
 
             if (userId && userText) {
+                // Lệnh Admin điều khiển trực tiếp trạng thái Bot (#pause / #resume)
+                if (/^(#pause|\/bot off)$/i.test(userText.trim())) {
+                    setHumanHandoverMode(userId);
+                    await sendTextMessage(userId, "Dạ em đã tạm dừng Bot cho cuộc trò chuyện này. Admin/Nhân viên sẽ trực tiếp hỗ trợ bạn ạ.");
+                    return;
+                }
+                if (/^(#resume|\/bot on)$/i.test(userText.trim())) {
+                    clearHandoverMode(userId);
+                    await sendTextMessage(userId, "Dạ em đã bật lại Bot Quản Gia AI tự động hỗ trợ bạn ạ.");
+                    return;
+                }
+
+                // KIỂM TRA CHẾ ĐỘ NGƯỜI THẬT (HUMAN HANDOVER): nếu đang có Admin hỗ trợ -> Bot IM LẶNG
+                if (isHumanHandoverActive(userId)) {
+                    console.log(`[server] User ${userId} đang trong cuộc trò chuyện với Admin. Bot giữ im lặng.`);
+                    return;
+                }
+
+                // Kiểm tra spam lặp lại & junk text: bỏ qua nếu vi phạm
+                if (checkSpamGuard(userId, userText) === "ignore") {
+                    return;
+                }
+
                 const replyText = await generateReply(userText);
                 await sendTextMessage(userId, replyText);
 
@@ -110,6 +145,39 @@ if (process.env.NODE_ENV !== "production") {
             res.status(400).json({ error: 'Missing "message" in JSON body or "q" in query string' });
             return;
         }
+
+        const testUserId = (req.headers["x-test-user-id"] as string) || req.ip || "test-user";
+
+        // Lệnh Admin thử nghiệm (#pause / #resume)
+        if (/^(#pause|\/bot off)$/i.test(userText.trim())) {
+            setHumanHandoverMode(testUserId);
+            res.json({ input: userText, reply: "Dạ em đã tạm dừng Bot cho cuộc trò chuyện này. Admin/Nhân viên sẽ trực tiếp hỗ trợ bạn ạ." });
+            return;
+        }
+        if (/^(#resume|\/bot on)$/i.test(userText.trim())) {
+            clearHandoverMode(testUserId);
+            res.json({ input: userText, reply: "Dạ em đã bật lại Bot Quản Gia AI tự động hỗ trợ bạn ạ." });
+            return;
+        }
+
+        // KIỂM TRA CHẾ ĐỘ NGƯỜI THẬT (HUMAN HANDOVER): nếu đang có Admin hỗ trợ -> Bot IM LẶNG
+        if (isHumanHandoverActive(testUserId)) {
+            console.log(`[test-reply] User ${testUserId} đang trong cuộc trò chuyện với Admin. Bot giữ im lặng.`);
+            res.json({ input: userText, reply: null, isIgnored: true });
+            return;
+        }
+
+        // Test Anti-Spam check (3 cùng nội dung trong 30 giây): im lặng hoàn toàn, không phản hồi
+        if (checkSpamGuard(testUserId, userText) === "ignore") {
+            console.log(`[test-reply] Im lặng bỏ qua tin nhắn spam từ user ${testUserId}: "${userText}"`);
+            res.json({
+                input: userText,
+                reply: null,
+                isIgnored: true
+            });
+            return;
+        }
+
         console.log(`[test-reply] Testing: "${userText}"`);
         try {
             const reply = await generateReply(userText);
@@ -146,10 +214,10 @@ if (process.env.NODE_ENV !== "production") {
     <div class="chat-container">
         <div class="header">💬 Zalo OA Chatbot Tester (SunHavens)</div>
         <div class="messages" id="messages">
-            <div class="msg bot">Xin chào! Bạn gõ câu hỏi thử nghiệm vào ô bên dưới nhé.</div>
+            <div class="msg bot">Xin chào! Bạn gõ câu hỏi thử nghiệm vào ô bên dưới nhé (thử cả tiếng Việt có dấu hoặc không dấu).</div>
         </div>
         <form class="input-area" id="chatForm">
-            <input type="text" id="userInput" placeholder="Nhập câu hỏi (ví dụ: phí dịch vụ, địa chỉ, wifi...)" required autocomplete="off" />
+            <input type="text" id="userInput" placeholder="Nhập câu hỏi (ví dụ: wifi mat khau, noi quy, dia chi...)" required autocomplete="off" />
             <button type="submit">Gửi</button>
         </form>
     </div>
@@ -173,6 +241,10 @@ if (process.env.NODE_ENV !== "production") {
                     body: JSON.stringify({ message: text })
                 });
                 const data = await res.json();
+                if (data.isIgnored || !data.reply) {
+                    console.log('[test] Tin nhắn bị bỏ qua do spam (im lặng trong 30s)');
+                    return;
+                }
                 addMsg(data.reply || data.error, 'bot');
             } catch (err) {
                 addMsg('Lỗi kết nối server: ' + err.message, 'bot');
@@ -194,6 +266,31 @@ if (process.env.NODE_ENV !== "production") {
     console.log("[dev] Test endpoint: POST http://localhost:3000/test-reply");
     console.log("[dev] Test UI: OPEN http://localhost:3000/test in your browser!");
 }
+
+// Endpoint hỗ trợ OAuth Authorize trực tiếp trên Production Webserver
+app.get("/oa/callback", async (req: Request, res: Response) => {
+    const code = req.query.code as string;
+    if (!code) {
+        res.status(400).send("❌ Thiếu tham số ?code= từ Zalo redirect.");
+        return;
+    }
+
+    const result = await exchangeCodeAndSaveTokens(code);
+    if (result.success) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.send(`
+            <div style="font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f9f9f9; height: 100vh;">
+                <div style="max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                    <h1 style="color: #2e7d32; font-size: 24px;">🎉 Cấp Quyền Zalo OA Thành Công!</h1>
+                    <p style="color: #555; font-size: 16px; line-height: 1.5;">Bot Quản Gia AI trên Server Production đã nhận và lưu Access Token & Refresh Token mới.</p>
+                    <p style="color: #0068ff; font-weight: bold;">Bây giờ Bot có thể tự động trả lời tin nhắn Zalo 24/7 rồi nha!</p>
+                </div>
+            </div>
+        `);
+    } else {
+        res.status(400).send(`❌ Đổi token thất bại. Mã code đã hết hạn hoặc không hợp lệ: ${result.error}`);
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`Bot server đang chạy tại http://localhost:${PORT}`);

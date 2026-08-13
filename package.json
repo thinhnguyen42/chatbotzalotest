@@ -9,7 +9,8 @@
         "start": "node dist/server.js",
         "lint": "tsc --noEmit",
         "test": "echo \"No tests specified\"",
-        "ingest": "ts-node scripts/ingest.ts"
+        "ingest": "ts-node scripts/ingest.ts",
+        "token:exchange": "ts-node scripts/exchangeCode.ts"
     },
     "dependencies": {
         "axios": "^1.7.7",
