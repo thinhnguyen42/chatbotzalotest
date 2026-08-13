@@ -5,7 +5,7 @@ import { sendTextMessage, notifyAdmin, sendImageMessage, sendHouseRulesImage, ex
 import { generateReply } from "./replyEngine";
 import { verifyZaloSignature } from "./verifyZaloSignature";
 import { checkSpamGuard } from "./spamGuard";
-import { isHumanHandoverActive, setHumanHandoverMode, clearHandoverMode } from "./humanHandover";
+import { isHumanHandoverActive, setHumanHandoverMode, clearHandoverMode, isBotSentMsgId } from "./humanHandover";
 
 const app = express();
 
@@ -39,8 +39,16 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
         // Sự kiện Admin / Nhân viên gửi tin nhắn trực tiếp cho khách qua Zalo OA Portal
         if (event.event_name === "oa_send_text" || event.event_name === "oa_send_image") {
             const recipientId = event.recipient?.id;
+            const msgId = event.message?.msg_id;
+
+            // Nếu đây là event do chính Bot vừa gửi qua API -> Bỏ qua, KHÔNG kích hoạt Human Handover
+            if (msgId && isBotSentMsgId(msgId)) {
+                console.log(`[server] Nhận event ${event.event_name} từ chính Bot (msg_id: ${msgId}). Bỏ qua Human Handover.`);
+                return;
+            }
+
             if (recipientId) {
-                console.log(`[server] Admin đã gửi tin nhắn cho user ${recipientId}. Tự động chuyển giao Human Handover (Tạm dừng Bot 5p).`);
+                console.log(`[server] Admin/Nhân viên đã gửi tin nhắn thủ công cho user ${recipientId}. Tự động chuyển giao Human Handover (Tạm dừng Bot 5p).`);
                 setHumanHandoverMode(recipientId);
             }
             return;

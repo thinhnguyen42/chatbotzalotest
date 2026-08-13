@@ -1,6 +1,7 @@
 import axios from "axios";
 import fs from "fs";
 import path from "path";
+import { markMsgIdAsBotSent } from "./humanHandover";
 
 /**
  * Module này lo 2 việc:
@@ -214,7 +215,9 @@ export async function sendTextMessage(userId: string, text: string): Promise<voi
         }
 
         if (res.data && res.data.error === 0) {
-            console.log(`[zaloClient] Đã gửi tin nhắn thành công tới user: ${userId} (msg_id: ${res.data.data?.message_id || 'ok'})`);
+            const msgId = res.data.data?.message_id;
+            if (msgId) markMsgIdAsBotSent(msgId);
+            console.log(`[zaloClient] Đã gửi tin nhắn thành công tới user: ${userId} (msg_id: ${msgId || 'ok'})`);
         } else {
             console.error(`[zaloClient] ❌ THẤT BẠI khi gửi tin nhắn tới user ${userId}! Chi tiết từ Zalo API:`, JSON.stringify(res.data));
         }
@@ -293,6 +296,8 @@ export async function sendImageMessage(userId: string, imageUrl: string): Promis
         }
 
         if (res.data && res.data.error === 0) {
+            const msgId = res.data.data?.message_id;
+            if (msgId) markMsgIdAsBotSent(msgId);
             console.log(`[zaloClient] Đã gửi ảnh thành công tới user: ${userId}`);
         } else {
             console.error(`[zaloClient] ❌ THẤT BẠI khi gửi ảnh tới user ${userId}:`, JSON.stringify(res.data));
@@ -384,6 +389,8 @@ export async function sendHouseRulesImage(userId: string): Promise<void> {
                 }
             );
             if (res.data && res.data.error === 0) {
+                const msgId = res.data.data?.message_id;
+                if (msgId) markMsgIdAsBotSent(msgId);
                 console.log(`[zaloClient] Đã gửi ảnh noiQuy.jpg thành công tới user: ${userId}`);
                 return;
             } else {
