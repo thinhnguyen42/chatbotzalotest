@@ -55,16 +55,16 @@ function extractAnswerFromChunk(chunkText: string): string {
 export async function generateRagReply(userText: string): Promise<string> {
     const trimmed = userText.trim();
 
-    // Nếu tin nhắn quá ngắn (1-2 ký tự hoặc chỉ là chữ số đơn lẻ như 0, 1, 2...) -> Trả về form menu mặc định ngay
-    if (trimmed.length <= 2 || /^\d{1,2}$/.test(trimmed)) {
-        return DEFAULT_UNKNOWN_REPLY;
-    }
-
     // 1. Thử tìm câu trả lời chính xác bằng thuật toán từ khóa từ KB (tốc độ 0ms, 100% chuẩn kịch bản)
     const directMatch = findDirectFaqMatch(userText);
     if (directMatch) {
         console.log(`[ragEngine] Khớp từ khóa trực tiếp từ KB cho câu: "${userText}"`);
         return cleanMarkdownText(directMatch);
+    }
+
+    // Nếu tin nhắn quá ngắn (1 ký tự hoặc chỉ là chữ số đơn lẻ như 0, 1, 2...) -> Trả về form menu mặc định ngay
+    if (trimmed.length <= 1 || /^\d{1,2}$/.test(trimmed)) {
+        return DEFAULT_UNKNOWN_REPLY;
     }
 
     // 2. Thử Vietnamese Bi-Encoder Semantic FAQ matching (port 5051)

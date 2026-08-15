@@ -1,0 +1,391 @@
+{
+  "topics": [
+    {
+      "id": "greeting",
+      "name": "Chào hỏi và Hỗ trợ",
+      "keywords": [
+        "xin chào",
+        "chào",
+        "chào bot",
+        "hello",
+        "hi",
+        "heluu",
+        "chào bạn",
+        "chào em",
+        "chào ad",
+        "hỗ trợ",
+        "trợ giúp",
+        "help"
+      ],
+      "typo_variations": [
+        "xig chào",
+        "xuao chao",
+        "xao chao",
+        "chin chao",
+        "xung chao",
+        "xib chao",
+        "chaoo",
+        "chao boot",
+        "helo",
+        "helllo",
+        "helu",
+        "hix",
+        "ho tro",
+        "tro giup",
+        "hi"
+      ],
+      "answer": "Xin chào bạn! Quản gia AI của SunHavens rất vui được hỗ trợ bạn.\n\nHiện tại, bạn đang quan tâm đến thông tin nào của căn hộ ạ? Bạn có thể gõ trực tiếp các từ khóa này để em gửi thông tin ngay lập tức nhé:\n- [Địa chỉ] - Xem vị trí chính xác của tòa nhà.\n- [Chi phí] - Xem tiền điện, nước, phí dịch vụ hằng tháng.\n- [Nội quy nhà] - Xem quy định giờ giấc, bạn bè, nuôi pet.\n- [PCCC] - Hướng dẫn an toàn phòng cháy chữa cháy.\n- [Bảo trì] - Báo sự cố hư hỏng trang thiết bị trong phòng.\n- [Liên hệ] - Lấy số hotline ban quản lý tòa nhà.\n\nNếu bạn có câu hỏi khác, cứ nhắn trực tiếp vào đây, em sẽ hỗ trợ bạn ngay nha!"
+    },
+    {
+      "id": "address",
+      "name": "Địa chỉ",
+      "keywords": [
+        "Địa chỉ ở đâu?",
+        "Tòa nhà ở đâu?",
+        "Vị trí tòa nhà.",
+        "Cho xin địa chỉ.",
+        "Chỉ đường.",
+        "Vị trí.",
+        "Địa chỉ.",
+        "Bản đồ."
+      ],
+      "typo_variations": [
+        "dia cho",
+        "diachj",
+        "dia chu",
+        "dia chii",
+        "toa nha o dau",
+        "ban do",
+        "chi duong"
+      ],
+      "answer": "Dạ, Quản gia AI xin gửi lại thông tin địa chỉ chính xác của tòa nhà SunHavens để bạn tiện đặt đồ ăn, gọi xe hoặc gửi cho bạn bè nhé:\n- Địa chỉ: Số 38, Đường Phan Bá Vành, Phường Cát Lái, Thành phố Hồ Chí Minh\n- Link Google Maps: https://www.google.com/maps/place/SunHavens+Phan+B%C3%A1+V%C3%A0nh,+Smart+Apartment/@10.7743296,106.7585988,19z/data=!3m1!4b1!4m14!1m7!3m6!1s0x317525c56e38559f:0xb225e55d07b9dbb0!2zMzggUGhhbiBCw6EgVsOgbmgsIEPDoXQgTMOhaSwgSOG7kyBDaMOtIE1pbmgsIFZp4buHdCBOYW0!3b1!8m2!3d10.773279!4d106.7580999!3m5!1s0x3175250025b41f75:0x6618374f096c0ddc!8m2!3d10.7743296!4d106.7592439!16s%2Fg%2F11ntkxty1t?entry=ttu&g_ep=EgoyMDI2MDcyNy4wIKXMDSoASAFQAw%3D%3D"
+    },
+    {
+      "id": "rental_inquiry",
+      "name": "Hỏi thuê phòng",
+      "keywords": [
+        "Có phòng trống không?",
+        "Giá thuê phòng bao nhiêu?",
+        "Muốn xem phòng.",
+        "Thuê phòng.",
+        "Đặt lịch xem nhà.",
+        "Còn phòng không?"
+      ],
+      "typo_variations": [
+        "thue phong",
+        "phong trong",
+        "xem phong",
+        "dat phong",
+        "xem nha",
+        "thue nha"
+      ],
+      "answer": "Cảm ơn bạn đã quan tâm đến căn hộ dịch vụ của chúng mình!\nVề thông tin phòng trống, giá thuê chi tiết và lịch hẹn xem nhà trực tiếp, bạn vui lòng liên hệ với Quản lý căn hộ qua:\nHotline / Zalo: 0938244695\nBạn cứ nhắn tin hoặc gọi điện, bên mình có nhân viên trực để hỗ trợ bạn ạ. Chúc bạn một ngày tốt lành!"
+    },
+    {
+      "id": "house_rules",
+      "name": "Nội quy nhà",
+      "keywords": [
+        "Nội quy nhà.",
+        "Cho xin nội quy.",
+        "Quy định tòa nhà.",
+        "Nội quy là gì?"
+      ],
+      "typo_variations": [
+        "noi quy",
+        "noi quui",
+        "noi quyn",
+        "quy dinh",
+        "qui dinh",
+        "quy dinjh"
+      ],
+      "answer": "Dạ, Quản gia AI xin gửi bạn bảng Nội Quy Nhà tại SunHavens để chúng mình cùng nhau xây dựng một không gian sống văn minh, an toàn và thoải mái nhé:\n1. An ninh & Riêng tư (No Stranger): Vui lòng không tự ý cho người lạ vào khu nhà để đảm bảo an toàn chung cho tất cả cư dân ạ.\n2. Văn minh & Yên tĩnh (Quiet after 10PM): Hãy đi nhẹ, nói khẽ sau 22:00 để tránh làm ảnh hưởng đến giấc ngủ của hàng xóm nha.\n3. Phòng cháy chữa cháy (Fire Caution): Bạn nhớ tắt bếp và rút/tắt các thiết bị điện không cần thiết trước khi ra khỏi phòng nhé.\n4. Giữ thú cưng (Keep your pet): Vui lòng giữ vệ sinh sạch sẽ và hạn chế tối đa tiếng ồn của các bạn pet để không làm phiền xung quanh ạ.\n5. Giữ vệ sinh phòng (Keep your place clean): Hãy giữ gìn vệ sinh căn phòng và bảo vệ các đồ đạc chu đáo như khi bạn mới nhận phòng nhé!\n6. Chấp hành pháp luật (Law-abiding): Tuyệt đối không sử dụng chất cấm (No Drugs) và không thực hiện các hành vi vi phạm pháp luật tại căn hộ.\n7. Hành lang & Khu vực chung (Keep public areas clean): Giữ gìn hành lang và các khu vực dùng chung luôn gọn gàng, sạch sẽ, để giày dép đúng nơi quy định.\nLiên hệ hỗ trợ: Nếu có bất kỳ vấn đề gì cần giúp đỡ (về điện, nước, sự cố...), bạn cứ nhắn ngay tại khung chat này để được hỗ trợ kịp thời nhé!\nCảm ơn bạn đã hợp tác và chúc bạn có những trải nghiệm tuyệt vời tại SunHavens!"
+    },
+    {
+      "id": "fire_safety",
+      "name": "Phòng cháy chữa cháy",
+      "keywords": [
+        "Quy định PCCC.",
+        "PCCC.",
+        "Bình chữa cháy ở đâu?",
+        "Sơ đồ thoát hiểm.",
+        "Hướng dẫn an toàn phòng cháy."
+      ],
+      "typo_variations": [
+        "pccc",
+        "phong chay",
+        "phong chay chua chay",
+        "binh chua chay",
+        "so do thoat hiem"
+      ],
+      "answer": "Sự an toàn của bạn là ưu tiên hàng đầu của Quản gia AI. Dưới đây là thông tin và hướng dẫn PCCC tại tòa nhà:\n- Thiết bị tại chỗ: Căn hộ đã được trang bị bình chữa cháy mini/hệ thống báo cháy tự động/đầu phun nước. Bình chữa cháy được đặt tại góc cầu thang của mỗi tầng.\n- Lối thoát hiểm: Sơ đồ thoát hiểm được dán sau cửa phòng / sảnh thang máy. Lối thang bộ thoát hiểm nằm ở cuối hành lang.\n- Nghiêm cấm: Không nấu ăn bằng bếp than/củi, không để vật dụng cản trở lối đi hành lang và tuyệt đối không hút thuốc trong phòng.\n- Tình huống khẩn cấp: Nếu có sự cố, hãy bấm nút báo cháy ở hành lang và gọi ngay hotline cứu hỏa 114 và liên hệ với quản lý tòa nhà qua Hotline: 0938244695 nhé.\nChúc bạn luôn có những trải nghiệm an toàn và an tâm tại đây!"
+    },
+    {
+      "id": "maintenance_report",
+      "name": "Báo hỏng thiết bị",
+      "keywords": [
+        "Hư hỏng.",
+        "Bị hư hỏng.",
+        "Báo hư hỏng.",
+        "Bị hư.",
+        "Báo hỏng thiết bị.",
+        "Máy lạnh không mát.",
+        "Máy giặt hỏng.",
+        "Tủ lạnh hỏng.",
+        "Khóa cửa bị lỗi.",
+        "Vòi nước bị rò rỉ.",
+        "Bảo trì."
+      ],
+      "typo_variations": [
+        "bao hong",
+        "bao hongg",
+        "hu hong",
+        "huu hong",
+        "bi hu",
+        "bao tri",
+        "may lanh khong mat",
+        "may giat hong",
+        "tu lanh hong",
+        "khoa cua loi",
+        "ro ri nuoc"
+      ],
+      "answer": "Dạ, trong quá trình sinh hoạt, nếu các trang thiết bị trong phòng (điện, nước, máy lạnh, tủ lạnh...) gặp sự cố, bạn cứ yên tâm nhé.\nBạn vui lòng gửi thông tin cho Quản gia AI theo cú pháp sau để em báo đội kỹ thuật qua xử lý ngay ạ:\n- Thiết bị gặp sự cố: [Tên thiết bị, ví dụ: Máy lạnh không mát / Vòi nước bị rò rỉ]\n- Hình ảnh/Video (nếu có): [Bạn gửi kèm vào khung chat này nhé]\n- Thời gian kỹ thuật có thể qua: [Ví dụ: Sáng mai / Cả ngày / Sau 18h]\nĐội kỹ thuật của tòa nhà sẽ liên hệ xác nhận thông tin trong thời gian sớm nhất ạ!"
+    },
+    {
+      "id": "contact",
+      "name": "Liên hệ",
+      "keywords": [
+        "Hotline.",
+        "Liên hệ.",
+        "Số điện thoại quản lý.",
+        "Số chăm sóc khách hàng.",
+        "Liên hệ ban quản lý."
+      ],
+      "typo_variations": [
+        "hotline",
+        "lien he",
+        "so dien thoai",
+        "so quan ly",
+        "cham soc khach hang"
+      ],
+      "answer": "Dạ, để hỗ trợ bạn nhanh nhất trong mọi tình huống, Quản gia AI xin gửi bạn số Hotline liên hệ trực tiếp:\nHotline Quản lý tòa nhà / Chăm sóc khách hàng: 0938244695\nBạn có thể lưu lại số này để liên hệ trực tiếp khi cần xử lý gấp nhé!"
+    },
+    {
+      "id": "lease_extension",
+      "name": "Thủ tục Gia hạn hợp đồng",
+      "keywords": [
+        "Gia hạn hợp đồng.",
+        "Xin gia hạn.",
+        "Hết hạn hợp đồng.",
+        "Đổi hợp đồng mới.",
+        "Thủ tục gia hạn."
+      ],
+      "typo_variations": [
+        "gia han",
+        "gia hann",
+        "het han hop dong",
+        "doi hop dong"
+      ],
+      "answer": "Dạ, Quản gia AI rất vui vì bạn muốn tiếp tục đồng hành cùng căn hộ của chúng mình!\nĐể thủ tục gia hạn diễn ra thuận lợi nhất, bạn vui lòng lưu ý giúp em một số thông tin sau nha:\n- Thời gian thông báo: Theo quy định, bạn vui lòng báo trước ngày hết hạn hợp đồng cũ ít nhất 15 đến 30 ngày ạ.\n- Thời hạn gia hạn: Bạn dự kiến sẽ gia hạn thêm 3 tháng / 6 tháng / 1 năm ạ?\nEm đã ghi nhận nhu cầu của bạn và chuyển thông tin đến Chủ nhà. Phía quản lý sẽ chuẩn bị phụ lục hợp đồng mới và liên hệ lại với bạn trong thời gian sớm nhất để hai bên ký kết nhé!"
+    },
+    {
+      "id": "check_out",
+      "name": "Thủ tục Trả phòng",
+      "keywords": [
+        "Trả phòng.",
+        "Bàn giao phòng.",
+        "Trả cọc.",
+        "Hoàn cọc.",
+        "Check-out.",
+        "Thủ tục trả phòng."
+      ],
+      "typo_variations": [
+        "tra phong",
+        "traphong",
+        "tra coc",
+        "hoan coc",
+        "ban giao phong",
+        "checkout"
+      ],
+      "answer": "Dạ, Quản gia AI rất tiếc khi phải chia tay bạn trong thời gian tới. Để quá trình bàn giao phòng và hoàn cọc diễn ra nhanh chóng, bạn giúp em thực hiện các bước sau nhé:\n1. Dọn dẹp & Kiểm tra tài sản: Bạn vui lòng gom toàn bộ đồ đạc cá nhân và để lại các trang thiết bị của căn hộ đầy đủ như lúc nhận phòng (remote máy lạnh, tivi, thẻ từ, chìa khóa...).\n2. Thời gian bàn giao: Giờ check-out tiêu chuẩn là trước 12:00 trưa ngày kết thúc hợp đồng. Bạn dự kiến mấy giờ sẽ rời đi để em báo nhân viên qua kiểm tra phòng trực tiếp ạ?\n3. Chốt công tơ & Hoàn cọc: Quản lý tòa nhà sẽ chốt số điện/nước tại thời điểm bạn bàn giao phòng. Tiền đặt cọc (sau khi trừ tiền điện nước và các chi phí phát sinh nếu có) sẽ được hoàn trả vào tài khoản của bạn trong vòng 7 ngày làm việc.\nBạn vui lòng nhắn cho em số tài khoản nhận lại tiền cọc ở đây luôn nhé! Cảm ơn bạn rất nhiều vì đã lựa chọn ở đây trong thời gian qua."
+    },
+    {
+      "id": "parking",
+      "name": "Thông tin Đỗ xe",
+      "keywords": [
+        "Gửi xe.",
+        "Phí gửi xe.",
+        "Bãi đỗ xe.",
+        "Xe máy.",
+        "Ô tô.",
+        "Đỗ xe."
+      ],
+      "typo_variations": [
+        "gui xe",
+        "guixe",
+        "xe may",
+        "do xe",
+        "phi xe",
+        "bai do xe"
+      ],
+      "answer": "Dạ, Quản gia AI xin gửi bạn thông tin về khu vực đỗ xe của tòa nhà mình nhé:\n- Xe máy: Đỗ tại hầm xe của tòa nhà, mỗi phòng được miễn phí 02 xe máy. Bạn vui lòng đăng ký biển số xe với em để em cập nhật nhé. (Từ xe thứ 3, phí 100.000đ/xe/tháng).\n- Ô tô: Tòa nhà không có bãi đỗ ô tô, bạn có thể gửi tại bãi xe ô tô cách nhà 50m.\n- Lưu ý: Vui lòng không đỗ xe chặn lối ra vào chung của tòa nhà ạ."
+    },
+    {
+      "id": "wifi",
+      "name": "Thông tin Wifi",
+      "keywords": [
+        "Wifi.",
+        "Mật khẩu wifi.",
+        "Pass wifi.",
+        "Tên wifi.",
+        "Internet."
+      ],
+      "typo_variations": [
+        "wifi",
+        "wjfi",
+        "wifii",
+        "wi-fi",
+        "mat khau wifi",
+        "pass wifi",
+        "ten wifi"
+      ],
+      "answer": "Dạ, thông tin kết nối Internet tại căn hộ của bạn đây ạ:\n- Tên Wifi (SSID): SunHavens\n- Mật khẩu (Password): 123456789"
+    },
+    {
+      "id": "key_password",
+      "name": "Quên mật khẩu hoặc Mất thẻ từ",
+      "keywords": [
+        "Quên mật khẩu cửa.",
+        "Mất thẻ từ.",
+        "Quên mã số.",
+        "Làm lại thẻ từ.",
+        "Mất chìa khóa."
+      ],
+      "typo_variations": [
+        "quen mat khau",
+        "mat the tu",
+        "quen ma so",
+        "mat chia khoa",
+        "lam lai the"
+      ],
+      "answer": "Dạ không sao đâu ạ, bạn bình tĩnh nhé! Để xử lý việc quên mã số hoặc mất thẻ từ, bạn làm theo hướng dẫn sau:\n- Cách 1 (Nếu dùng khóa mã số): Thử nhập lại mã số dự phòng mà em đã gửi riêng cho bạn lúc check-in.\n- Cách 2 (Khẩn cấp): Gọi ngay cho Hotline Quản lý tòa nhà: 0938244695 để nhân viên hỗ trợ mở cửa từ xa hoặc qua mở trực tiếp cho bạn.\n- Phí cấp lại thẻ (nếu làm mất thẻ từ): 100.000đ/thẻ."
+    },
+    {
+      "id": "pricing_fees",
+      "name": "Phí dịch vụ",
+      "keywords": [
+        "Phí dịch vụ bao nhiêu?",
+        "Hàng tháng phải đóng những khoản gì?",
+        "Tổng chi phí gồm những gì?",
+        "Tiền điện nước.",
+        "Chi phí."
+      ],
+      "typo_variations": [
+        "phi dich vu",
+        "phidichvu",
+        "tien dien nuoc",
+        "chi phi",
+        "tien dien",
+        "tien nuoc",
+        "dich vu"
+      ],
+      "answer": "Dạ, Quản gia AI xin gửi bạn thông tin chi tiết về các chi phí sinh hoạt hằng tháng tại căn hộ để bạn tiện tham khảo nhé:\n- Tiền điện: 4.000đ / kWh (tính theo số kí điện tiêu thụ thực tế của phòng).\n- Tiền nước: 100.000đ / người / tháng.\n- Phí dịch vụ tòa nhà: 200.000đ / phòng / tháng (Khoản này đã bao gồm: hệ thống Wifi, chi phí vệ sinh khu vực chung và các tiện ích khác của tòa nhà).\n- Phí gửi xe: Miễn phí đỗ xe máy (tối đa 02 xe máy/phòng).\nNgoài tiền thuê phòng cố định, hằng tháng bạn sẽ chỉ cần thanh toán thêm các khoản chi phí sinh hoạt rõ ràng như trên thôi nhé!"
+    },
+    {
+      "id": "room_capacity",
+      "name": "Số lượng người ở",
+      "keywords": [
+        "Mấy người ở?",
+        "Số lượng người ở.",
+        "Mấy người 1 phòng?",
+        "Ở được mấy người?"
+      ],
+      "typo_variations": [
+        "so nguoi o",
+        "may nguoi o",
+        "may nguoi 1 phong",
+        "nguoi o"
+      ],
+      "answer": "Dạ, Quản gia AI xin thông tin đến bạn về quy định số lượng thành viên tại căn hộ dịch vụ của chúng mình như sau ạ:\n- Số lượng người ở: Tiêu chuẩn 2 người / phòng để đảm bảo không gian sống thoải mái nhất cho bạn ạ."
+    },
+    {
+      "id": "pet_policy",
+      "name": "Nuôi thú cưng",
+      "keywords": [
+        "Có nuôi chó không?",
+        "Có nuôi mèo không?",
+        "Nuôi thú cưng.",
+        "Nuôi pet.",
+        "Được nuôi pet không?"
+      ],
+      "typo_variations": [
+        "thu cung",
+        "nuoi meo",
+        "nuoi cho",
+        "nuoi pet",
+        "cho nuoi meo",
+        "cho nuoi pet"
+      ],
+      "answer": "Dạ, Quản gia AI xin thông tin đến bạn về quy định nuôi thú cưng tại căn hộ dịch vụ của chúng mình như sau ạ:\n- Quy định nuôi thú cưng: Căn hộ cho phép nuôi mèo, với điều kiện bé mèo đã được tiêm ngừa dại đầy đủ để đảm bảo an toàn chung cho tòa nhà ạ. (Không hỗ trợ nuôi chó ạ).\nCăn hộ rất hoan nghênh bạn và bé mèo dọn vào ở cùng nhé!"
+    },
+    {
+      "id": "room_amenities",
+      "name": "Nội thất phòng",
+      "keywords": [
+        "Phòng có nội thất gì?",
+        "Nội thất gồm những gì?",
+        "Có máy giặt không?",
+        "Có tủ lạnh không?",
+        "Có máy lạnh không?"
+      ],
+      "typo_variations": [
+        "noi that",
+        "co may giat khong",
+        "co tu lanh khong",
+        "co may lanh khong"
+      ],
+      "answer": "Full nội thất – Chỉ cần xách vali vào ở:\n- Máy lạnh\n- Máy giặt riêng\n- Tủ lạnh\n- Tủ quần áo\n- Kệ bếp & Máy hút mùi"
+    },
+    {
+      "id": "payment_method",
+      "name": "Phương thức thanh toán",
+      "keywords": [
+        "Đóng tiền phòng như thế nào?",
+        "Thanh toán tiền thuê ở đâu?",
+        "Chuyển khoản cho ai?",
+        "Cú pháp thanh toán."
+      ],
+      "typo_variations": [
+        "thanh toan",
+        "chuyen khoan",
+        "cu phap thanh toan",
+        "dong tien phong"
+      ],
+      "answer": "Hiện tại bên mình hỗ trợ thanh toán bằng: Chuyển khoản ngân hàng hoặc Tiền mặt (nếu được chủ nhà xác nhận). Sau khi chuyển khoản thành công, bạn vui lòng gửi ảnh chuyển khoản để bên mình xác nhận nhé.\nCú pháp thanh toán: Số phòng + Tiền phòng tháng mấy + Số tiền thanh toán.\nVí dụ: P101 + Tiền phòng tháng 11 + 3.000.000đ"
+    },
+    {
+      "id": "emergency",
+      "name": "Khẩn cấp",
+      "keywords": [
+        "Chập điện.",
+        "Cháy.",
+        "Rò rỉ điện.",
+        "Rò rỉ nước nghiêm trọng."
+      ],
+      "typo_variations": [
+        "chay nha",
+        "chap dien",
+        "ro ri dien",
+        "khan cap",
+        "hoa hoan"
+      ],
+      "answer": "Đây là tình huống khẩn cấp. Bạn vui lòng ngắt nguồn điện/nước (nếu an toàn) và liên hệ trực tiếp chủ nhà ngay để được hỗ trợ nhanh nhất qua Hotline: 0938244695."
+    },
+    {
+      "id": "default",
+      "name": "Default (Apology / Fallback)",
+      "keywords": [],
+      "typo_variations": [],
+      "answer": "Quản gia AI xin lỗi bạn:\nDạ, câu hỏi này nằm ngoài phạm vi dữ liệu hiện tại của em rồi ạ.\n\nHỗ trợ gấp: Bấm gọi ngay Hotline Quản lý tòa nhà: 0938244695 nếu cần xử lý gấp nhé! Nhân viên cũng đang vào check tin nhắn để rep bạn liền ạ.\n\nThông tin tra cứu nhanh: Hiện tại em có thể hỗ trợ bạn ngay các thông tin sau. Bạn chỉ cần gõ trực tiếp các từ khóa dưới đây, em sẽ gửi phản hồi lập tức:\n- [Địa chỉ] - Xem vị trí chính xác của tòa nhà.\n- [Chi phí] - Xem tiền điện, nước, phí dịch vụ hằng tháng.\n- [Nội quy nhà] - Xem quy định giờ giấc, bạn bè, nuôi pet.\n- [PCCC] - Hướng dẫn an toàn phòng cháy chữa cháy.\n- [Bảo trì] - Báo sự cố hư hỏng trang thiết bị trong phòng.\n- [Liên hệ] - Lấy số hotline ban quản lý tòa nhà.\n\nBạn đợi bên em một xíu xiu nhé, nhân viên sẽ hỗ trợ bạn ngay đây ạ!"
+    }
+  ]
+}

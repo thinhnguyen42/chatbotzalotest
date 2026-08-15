@@ -16,14 +16,14 @@ async function runTests() {
                 const reply = await generateRagReply(q);
                 const isMatch = reply.length > 50 && !reply.includes("Quản gia AI chưa tìm thấy");
                 if (isMatch) {
-                    console.log(`  ✅ [PASS] "${q}"`);
+                    console.log(`  [PASS] "${q}"`);
                     passed++;
                 } else {
-                    console.log(`  ❌ [FAIL] "${q}" -> Got: ${reply.slice(0, 60)}...`);
+                    console.log(`  [FAIL] "${q}" -> Got: ${reply.slice(0, 60)}...`);
                     failed++;
                 }
             } catch (err: any) {
-                console.log(`  ❌ [ERROR] "${q}" -> ${err.message}`);
+                console.log(`  [ERROR] "${q}" -> ${err.message}`);
                 failed++;
             }
         }

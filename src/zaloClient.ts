@@ -111,7 +111,7 @@ export async function exchangeCodeAndSaveTokens(code: string): Promise<{ success
                     } catch {}
                 }
 
-                console.log("[zaloClient] ✅ Lấy & lưu OAuth token mới thành công!");
+                console.log("[zaloClient] Lấy & lưu OAuth token mới thành công!");
                 return { success: true, data: res.data };
             } else {
                 lastErrorData = res.data;
@@ -144,7 +144,7 @@ async function refreshAccessToken(): Promise<void> {
 
         const data = res.data;
         if (!data.access_token) {
-            console.error("[zaloClient] ⚠️ Không refresh được token Zalo:", data);
+            console.error("[zaloClient] Không refresh được token Zalo:", data);
             throw new Error("Không refresh được token: " + JSON.stringify(data));
         }
 
@@ -190,7 +190,7 @@ export async function sendTextMessage(userId: string, text: string): Promise<voi
 
         // Zalo API trả về HTTP 200 OK kể cả khi có lỗi! Cần kiểm tra res.data.error:
         if (res.data && res.data.error !== 0) {
-            console.warn(`[zaloClient] ⚠️ Zalo API trả về lỗi (code ${res.data.error}): ${res.data.message}`, res.data);
+            console.warn(`[zaloClient] Zalo API trả về lỗi (code ${res.data.error}): ${res.data.message}`, res.data);
 
             // Nếu lỗi liên quan đến token (code -216 hoặc message chứa token) -> thử refresh token và gửi lại 1 lần
             if (res.data.error === -216 || res.data.error === -201 || (typeof res.data.message === "string" && res.data.message.toLowerCase().includes("token"))) {
@@ -219,7 +219,7 @@ export async function sendTextMessage(userId: string, text: string): Promise<voi
             if (msgId) markMsgIdAsBotSent(msgId);
             console.log(`[zaloClient] Đã gửi tin nhắn thành công tới user: ${userId} (msg_id: ${msgId || 'ok'})`);
         } else {
-            console.error(`[zaloClient] ❌ THẤT BẠI khi gửi tin nhắn tới user ${userId}! Chi tiết từ Zalo API:`, JSON.stringify(res.data));
+            console.error(`[zaloClient] THẤT BẠI khi gửi tin nhắn tới user ${userId}! Chi tiết từ Zalo API:`, JSON.stringify(res.data));
         }
     } catch (err: any) {
         const errData = err.response?.data;
@@ -277,7 +277,7 @@ export async function sendImageMessage(userId: string, imageUrl: string): Promis
         );
 
         if (res.data && res.data.error !== 0) {
-            console.warn(`[zaloClient] ⚠️ Zalo API gửi ảnh trả về lỗi (code ${res.data.error}): ${res.data.message}`, res.data);
+            console.warn(`[zaloClient] Zalo API gửi ảnh trả về lỗi (code ${res.data.error}): ${res.data.message}`, res.data);
             if (res.data.error === -216 || (typeof res.data.message === "string" && res.data.message.toLowerCase().includes("token"))) {
                 console.log("[zaloClient] Thử refresh token và gửi lại ảnh...");
                 await refreshAccessToken();
@@ -300,7 +300,7 @@ export async function sendImageMessage(userId: string, imageUrl: string): Promis
             if (msgId) markMsgIdAsBotSent(msgId);
             console.log(`[zaloClient] Đã gửi ảnh thành công tới user: ${userId}`);
         } else {
-            console.error(`[zaloClient] ❌ THẤT BẠI khi gửi ảnh tới user ${userId}:`, JSON.stringify(res.data));
+            console.error(`[zaloClient] THẤT BẠI khi gửi ảnh tới user ${userId}:`, JSON.stringify(res.data));
         }
     } catch (err: any) {
         console.error("[zaloClient] Gửi ảnh thất bại:", err.response?.data || err.message);
@@ -344,9 +344,7 @@ export async function uploadLocalImageToZalo(filePath: string): Promise<string |
 }
 
 export async function sendHouseRulesImage(userId: string): Promise<void> {
-    const localPath = path.join(__dirname, "..", "public", "noiQuy.jpg");
-    const fallbackKbPath = path.join(__dirname, "..", "data", "knowledge-base", "noiQuy.jpg");
-    const targetPath = fs.existsSync(localPath) ? localPath : fallbackKbPath;
+    const targetPath = path.join(__dirname, "..", "public", "noiQuy.jpg");
 
     if (!fs.existsSync(targetPath)) {
         console.warn("[zaloClient] Không tìm thấy file noiQuy.jpg tại:", targetPath);
@@ -394,7 +392,7 @@ export async function sendHouseRulesImage(userId: string): Promise<void> {
                 console.log(`[zaloClient] Đã gửi ảnh noiQuy.jpg thành công tới user: ${userId}`);
                 return;
             } else {
-                console.warn(`[zaloClient] ⚠️ Gửi ảnh theo attachment_id trả về lỗi (code ${res.data?.error}):`, res.data);
+                console.warn(`[zaloClient] Gửi ảnh theo attachment_id trả về lỗi (code ${res.data?.error}):`, res.data);
             }
         } catch (err: any) {
             console.error("[zaloClient] Gửi ảnh theo attachment_id thất bại:", err.response?.data || err.message);

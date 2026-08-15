@@ -220,7 +220,7 @@ if (process.env.NODE_ENV !== "production") {
 </head>
 <body>
     <div class="chat-container">
-        <div class="header">💬 Zalo OA Chatbot Tester (SunHavens)</div>
+        <div class="header">Zalo OA Chatbot Tester (SunHavens)</div>
         <div class="messages" id="messages">
             <div class="msg bot">Xin chào! Bạn gõ câu hỏi thử nghiệm vào ô bên dưới nhé (thử cả tiếng Việt có dấu hoặc không dấu).</div>
         </div>
@@ -279,7 +279,7 @@ if (process.env.NODE_ENV !== "production") {
 app.get("/oa/callback", async (req: Request, res: Response) => {
     const code = req.query.code as string;
     if (!code) {
-        res.status(400).send("❌ Thiếu tham số ?code= từ Zalo redirect.");
+        res.status(400).send("Thiếu tham số ?code= từ Zalo redirect.");
         return;
     }
 
@@ -289,14 +289,14 @@ app.get("/oa/callback", async (req: Request, res: Response) => {
         res.send(`
             <div style="font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f9f9f9; height: 100vh;">
                 <div style="max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                    <h1 style="color: #2e7d32; font-size: 24px;">🎉 Cấp Quyền Zalo OA Thành Công!</h1>
+                    <h1 style="color: #2e7d32; font-size: 24px;">Cấp Quyền Zalo OA Thành Công!</h1>
                     <p style="color: #555; font-size: 16px; line-height: 1.5;">Bot Quản Gia AI trên Server Production đã nhận và lưu Access Token & Refresh Token mới.</p>
                     <p style="color: #0068ff; font-weight: bold;">Bây giờ Bot có thể tự động trả lời tin nhắn Zalo 24/7 rồi nha!</p>
                 </div>
             </div>
         `);
     } else {
-        res.status(400).send(`❌ Đổi token thất bại. Mã code đã hết hạn hoặc không hợp lệ: ${result.error}`);
+        res.status(400).send(`Đổi token thất bại. Mã code đã hết hạn hoặc không hợp lệ: ${result.error}`);
     }
 });
 
