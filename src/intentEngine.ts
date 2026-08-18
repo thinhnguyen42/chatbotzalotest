@@ -24,15 +24,16 @@ const DEFAULT_BUTTONS: QuickReplyButton[] = [
     { title: "📞 Hotline", payload: "Liên hệ" },
 ];
 
-// Danh sách các thiết bị cụ thể. Nếu người dùng không nhắc tên thiết bị cụ thể -> deviceType sẽ là undefined
+// Danh sách các thiết bị cụ thể.
+// Dùng regex khớp trên normText (tiếng Việt đã bỏ dấu) với cụm từ chính xác (tránh trùng từ 'voi' trong 'với')
 const DEVICE_PATTERNS: Array<{ type: string; regex: RegExp }> = [
-    { type: "máy lạnh / điều hòa", regex: /\b(điều hòa|máy lạnh|dieu hoa|may lanh)\b/i },
-    { type: "bóng đèn / điện", regex: /\b(bóng đèn|bong den|công tắc|cong tac|ổ điện|o dien|mất điện|mat dien|chập điện|chap dien|cháy đèn|chay den)\b/i },
-    { type: "vòi nước / bồn cầu", regex: /\b(vòi nước|voi nuoc|rò rỉ|ro ri|chảy nước|chay nuoc|mất nước|mat nuoc|bồn cầu|bon cau|tắc cống|tac cong|đường nước|duong nuoc)\b/i },
-    { type: "khóa cửa / thẻ từ", regex: /\b(khóa cửa|khoa cua|ổ khóa|o khoa|thẻ từ|the tu|vân tay)\b/i },
-    { type: "tủ lạnh", regex: /\b(tủ lạnh|tu lanh)\b/i },
-    { type: "máy giặt", regex: /\b(máy giặt|may giat)\b/i },
-    { type: "bếp / bình nóng lạnh", regex: /\b(bếp|bep|bình nóng lạnh|binh nong lanh|bình nước nóng)\b/i },
+    { type: "bóng đèn / điện", regex: /\b(den|bong den|cong tac|o dien|mat dien|chap dien|chay den|den sang|den hong)\b/i },
+    { type: "máy lạnh / điều hòa", regex: /\b(dieu hoa|may lanh)\b/i },
+    { type: "vòi nước / bồn cầu", regex: /\b(voi nuoc|voi hoa sen|voi rua|ro ri|chay nuoc|mat nuoc|bon cau|tac cong|duong nuoc)\b/i },
+    { type: "khóa cửa / thẻ từ", regex: /\b(khoa cua|o khoa|the tu|van tay)\b/i },
+    { type: "tủ lạnh", regex: /\b(tu lanh)\b/i },
+    { type: "máy giặt", regex: /\b(may giat)\b/i },
+    { type: "bếp / bình nóng lạnh", regex: /\b(bep|binh nong lanh|binh nuoc nong)\b/i },
 ];
 
 export function extractIntentAndEntities(text: string, currentRoom?: string): IntentResult {
@@ -48,17 +49,17 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         roomNumber = text.trim();
     }
 
-    // 2. Trích xuất loại thiết bị bị sự cố CỤ THỂ
+    // 2. Trích xuất loại thiết bị bị sự cố CỤ THỂ (Khớp trên normText)
     let deviceType: string | undefined;
     for (const item of DEVICE_PATTERNS) {
-        if (item.regex.test(text) || item.regex.test(normText)) {
+        if (item.regex.test(normText) || item.regex.test(text)) {
             deviceType = item.type;
             break;
         }
     }
 
-    // 3. Phân loại Khẩn cấp (EMERGENCY) - Cháy, nổ, chập điện, cấp cứu (không nhầm với chảy nước)
-    const isEmergency = (/\b(cháy nhà|bị cháy|đang cháy|chập điện|hỏa hoạn|bốc khói|phát nổ|cứu|khẩn cấp|báo cháy|tai nạn)\b/i.test(text) || /\b(chay nha|bi chay|dang chay|chap dien|hoa hoan|boc khoi|phat no|cuu voi|khan cap|bao chay|tai nan)\b/i.test(normText)) && !/\b(phòng cháy|pccc|chảy nước|chay nuoc)\b/i.test(text) && !/\b(chay nuoc)\b/i.test(normText);
+    // 3. Phân loại Khẩn cấp (EMERGENCY) - Cháy, nổ, chập điện, cấp cứu
+    const isEmergency = (/\b(chay nha|bi chay|dang chay|chap dien|hoa hoan|boc khoi|phat no|cuu voi|khan cap|bao chay|tai nan)\b/i.test(normText)) && !/\b(phong chay|pccc|chay nuoc)\b/i.test(normText);
 
     if (isEmergency) {
         return {
@@ -75,7 +76,7 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
     }
 
     // 4. Phân loại Phàn nàn Tiếng ồn (NOISE_COMPLAINT)
-    const isNoise = /\b(ồn|ồn ào|tiếng ồn|hàng xóm ồn|mở nhạc to|karaoke|hát hò)\b/i.test(text) || /\b(on|on ao|tieng on|hang xom on|mo nhac to|karaoke|hat ho)\b/i.test(normText);
+    const isNoise = /\b(on|on ao|tieng on|hang xom on|mo nhac to|karaoke|hat ho)\b/i.test(normText);
 
     if (isNoise) {
         return {
@@ -92,14 +93,13 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
     }
 
     // 5. Phân loại Báo hỏng thiết bị (REPORT_ISSUE)
-    // Bao gồm cả báo hỏng chung (vd: "báo cáo sự cố", "gọi thợ") lẫn báo hỏng thiết bị cụ thể
-    const isIssue = /\b(hư|hỏng|hư hỏng|bị hư|bị hỏng|báo hư|sự cố|báo hỏng|không lạnh|bị kẹt|rò rỉ|chảy nước|không chạy|mất điện|mất nước|gọi thợ|hỏng đồ)\b/i.test(text) || /\b(hu|hong|hu hong|bi hu|bi hong|bao hu|su co|bao hong|khong lanh|bi ket|ro ri|chay nuoc|khong chay|mat dien|mat nuoc|goi tho|hong do)\b/i.test(normText);
+    const isIssue = /\b(hu|hong|hu hong|bi hu|bi hong|bao hu|su co|bao hong|khong lanh|bi ket|ro ri|chay nuoc|khong chay|mat dien|mat nuoc|goi tho|hong do|khong sang|tat|chay|khong len|hu den|hong den)\b/i.test(normText);
 
     if (isIssue || deviceType) {
         return {
             intent: "REPORT_ISSUE",
             roomNumber,
-            deviceType, // Có thể là undefined nếu người dùng chỉ nói chung chung ("báo cáo sự cố")
+            deviceType,
             urgencyLevel: "MEDIUM",
             summary: `🛠️ BÁO SỰ CỐ TẠI PHÒNG ${roomNumber || "Chưa rõ"}: ${deviceType ? `Thiết bị [${deviceType}]` : "Chưa rõ thiết bị cụ thể"} - Nội dung: "${text}"`,
             recommendedButtons: [
@@ -110,7 +110,7 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
     }
 
     // 6. Phân loại Chi phí / Hóa đơn (BILLING)
-    const isBilling = /\b(tiền điện|tiền nước|phí dịch vụ|hóa đơn|tiền nhà|giá phòng|chi phí)\b/i.test(text) || /\b(tien dien|tien nuoc|phi dich vu|hoa don|tien nha|gia phong|chi phi)\b/i.test(normText);
+    const isBilling = /\b(tien dien|tien nuoc|phi dich vu|hoa don|tien nha|gia phong|chi phi)\b/i.test(normText);
 
     if (isBilling) {
         return {
