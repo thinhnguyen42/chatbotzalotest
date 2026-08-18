@@ -6,6 +6,7 @@ import { generateReply, generateReplyWithButtons } from "./replyEngine";
 import { verifyZaloSignature } from "./verifyZaloSignature";
 import { checkSpamGuard } from "./spamGuard";
 import { isHumanHandoverActive, setHumanHandoverMode, clearHandoverMode, isBotSentMsgId } from "./humanHandover";
+import { createTicket, formatUserTicketMessage, formatAdminTicketMessage } from "./ticket/ticketService";
 
 const app = express();
 
@@ -93,19 +94,19 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     await sendHouseRulesImage(userId);
                 }
 
-                // Tự động gửi thông báo Ticket có cấu trúc cho Admin nếu phát hiện sự cố, khẩn cấp hoặc phàn nàn
-                if (extractedIntent.intent === "EMERGENCY") {
-                    const emergencyNotice = `[🚨 TICKET KHẨN CẤP - XỬ LÝ NGAY]\nKhách hàng ID: ${userId}\nSố phòng: ${extractedIntent.roomNumber || "Chưa rõ"}\nTóm tắt: ${extractedIntent.summary}\nThời gian: ${new Date().toLocaleString("vi-VN")}\nBan quản lý/Admin vui lòng liên hệ khách hàng ngay!`;
-                    console.log(`[server] Gửi CẢNH BÁO KHẨN CẤP cho Admin:`, emergencyNotice);
-                    await notifyAdmin(emergencyNotice);
-                } else if (extractedIntent.intent === "NOISE_COMPLAINT") {
-                    const noiseNotice = `[🔊 TICKET PHÀN NÀN TIẾNG ỒN]\nKhách hàng ID: ${userId}\nSố phòng: ${extractedIntent.roomNumber || "Chưa rõ"}\nTóm tắt: ${extractedIntent.summary}\nThời gian: ${new Date().toLocaleString("vi-VN")}`;
-                    console.log(`[server] Gửi TICKET TIẾNG ỒN cho Admin:`, noiseNotice);
-                    await notifyAdmin(noiseNotice);
-                } else if (extractedIntent.intent === "REPORT_ISSUE") {
-                    const issueNotice = `[🛠️ TICKET BÁO HỎNG THIẾT BỊ]\nKhách hàng ID: ${userId}\nSố phòng: ${extractedIntent.roomNumber || "Chưa rõ"}\nThiết bị: ${extractedIntent.deviceType || "Không xác định"}\nTóm tắt: ${extractedIntent.summary}\nThời gian: ${new Date().toLocaleString("vi-VN")}`;
-                    console.log(`[server] Gửi TICKET BÁO HỎNG cho Admin:`, issueNotice);
-                    await notifyAdmin(issueNotice);
+                // Tự động khởi tạo Ticket (mã tk<room><seq>) và gửi phiếu xác nhận cho cả Khách & Admin
+                if (extractedIntent.intent === "EMERGENCY" || extractedIntent.intent === "REPORT_ISSUE" || extractedIntent.intent === "NOISE_COMPLAINT") {
+                    const ticket = createTicket(userId, extractedIntent.roomNumber, userText, extractedIntent.deviceType);
+                    console.log(`[server] Đã tạo Ticket #${ticket.ticketCode} cho user ${userId}`);
+
+                    // 1. Gửi tin nhắn xác nhận Ticket kèm Hotline Admin (0335395573) cho Khách
+                    const userTicketMsg = formatUserTicketMessage(ticket);
+                    await sendTextMessage(userId, userTicketMsg);
+
+                    // 2. Gửi Cảnh báo Ticket cấu trúc cho Admin
+                    const adminTicketMsg = formatAdminTicketMessage(ticket);
+                    console.log(`[server] Gửi TICKET #${ticket.ticketCode} cho Admin:`, adminTicketMsg);
+                    await notifyAdmin(adminTicketMsg);
                 }
             }
         }

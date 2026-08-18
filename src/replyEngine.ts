@@ -3,6 +3,7 @@ import { classifyTopicAndReply } from "./topicEngine";
 import { removeVietnameseDiacritics, normalizeTelexTypos, splitUnspacedWords } from "./utils/textUtils";
 import { addMessageToSession, updateSessionContext, getSession } from "./memory/sessionMemory";
 import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./intentEngine";
+import { ISSUE_GUIDANCE_TEMPLATE } from "./ticket/ticketService";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
@@ -67,7 +68,12 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         }
     }
 
-    // 2. Phân loại theo Topic & Sub-branches với kỹ thuật xử lý lỗi chính tả/gõ phím (0 token LLM)
+    // 2. Nếu khách hỏi/báo hỏng thiết bị -> Trả về mẫu hướng dẫn báo sự cố chuẩn
+    if (!reply && intentResult.intent === "REPORT_ISSUE") {
+        reply = ISSUE_GUIDANCE_TEMPLATE;
+    }
+
+    // 3. Phân loại theo Topic & Sub-branches
     if (!reply) {
         const topicResult = classifyTopicAndReply(userText);
         if (topicResult.matched) {
@@ -75,12 +81,12 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         }
     }
 
-    // 3. Fallback sang RAG / Microservices / LLM Synthesis nếu chưa khớp topic trực tiếp
+    // 4. Fallback sang RAG / Microservices / LLM Synthesis nếu chưa có câu trả lời
     if (!reply) {
         reply = await generateRagReply(userText, userId);
     }
 
-    // 4. Lưu phản hồi của assistant vào session memory
+    // 5. Lưu phản hồi của assistant vào session memory
     addMessageToSession(userId, "assistant", reply);
 
     return {
