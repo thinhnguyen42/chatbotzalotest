@@ -15,7 +15,7 @@ CÁC QUY TẮC BẮT BUỘC:
 5. Nếu trong ngữ cảnh có thông tin Số phòng của khách, hãy xưng hô phù hợp (ví dụ: "Dạ em chào anh/chị ở phòng ...").`;
 
 /**
- * Gọi Gemini API (Google AI Studio)
+ * Gọi Gemini API (Primary Provider - Gemini 2.5 Flash)
  */
 async function callGeminiApi(systemPrompt: string, userPrompt: string): Promise<string | null> {
     if (!GEMINI_API_KEY) {
@@ -23,8 +23,7 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string): Promise<
         return null;
     }
 
-    // Thử với gemini-1.5-flash
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     try {
         const response = await axios.post(
@@ -46,7 +45,6 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string): Promise<
             },
             {
                 headers: {
-                    "x-goog-api-key": GEMINI_API_KEY,
                     "Content-Type": "application/json",
                 },
                 timeout: 8000,
@@ -57,7 +55,7 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string): Promise<
         const replyText = candidate?.content?.parts?.[0]?.text;
 
         if (replyText) {
-            console.log("[llmService] Gọi Gemini API thành công!");
+            console.log("[llmService] Gọi Gemini API (Gemini 2.5 Flash) thành công!");
             return replyText.trim();
         }
         return null;
@@ -68,7 +66,7 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string): Promise<
 }
 
 /**
- * Gọi Groq API (Backup Provider - Llama 3.1 8B Instant)
+ * Gọi Groq API (Backup Provider - groq/compound-mini)
  */
 async function callGroqApi(systemPrompt: string, userPrompt: string): Promise<string | null> {
     if (!GROQ_API_KEY) {
@@ -82,7 +80,7 @@ async function callGroqApi(systemPrompt: string, userPrompt: string): Promise<st
         const response = await axios.post(
             url,
             {
-                model: "llama-3.1-8b-instant",
+                model: "groq/compound-mini",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userPrompt },
@@ -101,7 +99,7 @@ async function callGroqApi(systemPrompt: string, userPrompt: string): Promise<st
 
         const replyText = response.data?.choices?.[0]?.message?.content;
         if (replyText) {
-            console.log("[llmService] Gọi Groq API (Llama 3.1) dự phòng thành công!");
+            console.log("[llmService] Gọi Groq API (groq/compound-mini) dự phòng thành công!");
             return replyText.trim();
         }
         return null;
