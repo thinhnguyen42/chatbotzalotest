@@ -228,6 +228,63 @@ export async function sendTextMessage(userId: string, text: string): Promise<voi
     }
 }
 
+export async function sendQuickReplies(
+    userId: string,
+    text: string,
+    buttons: Array<{ title: string; payload: string }>
+): Promise<void> {
+    if (!buttons || buttons.length === 0) {
+        return sendTextMessage(userId, text);
+    }
+
+    let token = await ensureValidToken();
+    const payload = {
+        recipient: { user_id: userId },
+        message: {
+            text: text,
+            attachment: {
+                type: "template",
+                payload: {
+                    template_type: "quick_reply",
+                    elements: buttons.map((b) => ({
+                        content_type: "text",
+                        title: b.title,
+                        payload: b.payload,
+                    })),
+                },
+            },
+        },
+    };
+
+    try {
+        let res = await axios.post(
+            "https://openapi.zalo.me/v3.0/oa/message/cs",
+            payload,
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    access_token: token,
+                },
+            }
+        );
+
+        if (res.data && res.data.error === 0) {
+            const msgId = res.data.data?.message_id;
+            if (msgId) markMsgIdAsBotSent(msgId);
+            console.log(`[zaloClient] Đã gửi Quick Reply thành công tới user: ${userId}`);
+        } else {
+            console.warn(`[zaloClient] Quick Reply API trả về code ${res.data?.error}. Chuyển sang gửi tin nhắn thường kèm nút bấm text.`);
+            // Fallback gửi tin nhắn kèm menu chữ nếu Zalo Account chưa bật Quick Reply Template
+            const buttonTextList = buttons.map((b) => `👉 [${b.title}]`).join("\n");
+            const fallbackText = `${text}\n\nGợi ý thao tác nhanh:\n${buttonTextList}`;
+            await sendTextMessage(userId, fallbackText);
+        }
+    } catch (err: any) {
+        console.warn("[zaloClient] Lỗi gửi Quick Reply, dùng fallback sendTextMessage");
+        await sendTextMessage(userId, text);
+    }
+}
+
 export async function notifyAdmin(text: string): Promise<void> {
     const adminUserId = process.env.ZALO_ADMIN_USER_ID;
     if (!adminUserId) {
