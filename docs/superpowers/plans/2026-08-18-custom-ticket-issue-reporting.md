@@ -1,40 +1,51 @@
-# Custom Ticket & Issue Reporting Implementation Plan
+# Slot Filling & Strict Guardrail Ticket Flow Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement automated Ticket generation with custom format (`tk<roomNumber><issueSeq>`, e.g., `tk401001`), user guidance template reply, configurable Admin phone number (`0335395573`), and dual ticket dispatch for both User and Admin.
+**Goal:** Implement 2-step Slot Filling issue reporting flow: Slot Filling question when device is unspecified, and exact 🎫 Ticket Ticket generation when specific device is mentioned, enforcing strict end-user guardrails.
 
 **Architecture:**
-1. `src/config/adminConfig.ts`: Configurable Admin phone number and notification settings.
-2. `src/ticket/ticketService.ts`: Ticket code generator (`tk401001`), ticket store, and message formatters.
-3. `src/replyEngine.ts` & `src/server.ts`: Integrated to reply with exact user template and dispatch tickets to both User and Admin.
+1. `src/intentEngine.ts`: Refines device pattern detection. Returns `deviceType = undefined` for general requests ("báo hỏng", "hỏng đồ", "gọi thợ").
+2. `src/ticket/ticketService.ts`: Exports `GENERAL_SLOT_FILLING_REPLY` and user-facing ticket template with 🎫 icon.
+3. `src/replyEngine.ts`: Handles Slot Filling logic (NO ticket created if `deviceType` is missing; Ticket created ONLY when `deviceType` is present).
+4. `src/server.ts`: Enforces strict guardrails (sends ONLY user ticket format to user chat; sends admin ticket notification silently in background via `notifyAdmin`).
 
 ---
 
-### Task 1: Create Admin Config and Ticket Service Modules
+### Task 1: Refine Intent & Device Detection (`src/intentEngine.ts`)
 
 **Files:**
-- Create: `src/config/adminConfig.ts`
-- Create: `src/ticket/ticketService.ts`
-- Create: `scripts/testTicketService.ts`
+- Modify: `src/intentEngine.ts`
+- Modify: `scripts/testIntentEngine.ts`
 
-- [ ] **Step 1: Write `src/config/adminConfig.ts`**
-- [ ] **Step 2: Write `src/ticket/ticketService.ts` with `tk<room><seq>` generator**
-- [ ] **Step 3: Write test script `scripts/testTicketService.ts`**
-- [ ] **Step 4: Run test script to verify ticket code generation format**
-- [ ] **Step 5: Local commit**
+- [ ] **Step 1: Ensure general phrases ("báo hỏng", "gọi thợ", "hỏng đồ") do NOT set `deviceType`**
+- [ ] **Step 2: Add specific device patterns ("bóng đèn", "công tắc", "vòi nước", "bồn cầu", "ổ khóa", "tủ lạnh", "máy giặt", "máy lạnh", "điều hòa")**
+- [ ] **Step 3: Run test script `scripts/testIntentEngine.ts` to verify device extraction vs general phrase parsing**
+- [ ] **Step 4: Local commit**
 
 ---
 
-### Task 2: Integrate Ticket Generation into Bot Pipeline
+### Task 2: Implement 2-Step Slot Filling & Ticket Flow (`src/ticket/ticketService.ts` & `src/replyEngine.ts`)
 
 **Files:**
+- Modify: `src/ticket/ticketService.ts`
 - Modify: `src/replyEngine.ts`
-- Modify: `src/server.ts`
-- Create: `scripts/testTicketPipeline.ts`
+- Modify: `scripts/testTicketService.ts`
 
-- [ ] **Step 1: Update `replyEngine.ts` to output exact issue reporting prompt and generate ticket code**
-- [ ] **Step 2: Update `server.ts` to dispatch tickets to both User and Admin (Hotline 0335395573)**
-- [ ] **Step 3: Run integration test `scripts/testTicketPipeline.ts`**
-- [ ] **Step 4: Run `npx tsc --noEmit` to verify type safety**
-- [ ] **Step 5: Local commit**
+- [ ] **Step 1: Update `ticketService.ts` with `GENERAL_SLOT_FILLING_REPLY` and 🎫 ticket format**
+- [ ] **Step 2: Update `replyEngine.ts` slot filling conditional logic**
+- [ ] **Step 3: Run test script `scripts/testTicketService.ts`**
+- [ ] **Step 4: Local commit**
+
+---
+
+### Task 3: Enforce Strict Guardrails in `src/server.ts` & Verification
+
+**Files:**
+- Modify: `src/server.ts`
+- Modify: `scripts/testTicketPipeline.ts`
+
+- [ ] **Step 1: Update `server.ts` to separate end-user ticket response from silent admin notification**
+- [ ] **Step 2: Run integration test `scripts/testTicketPipeline.ts` to verify general vs specific issue cases**
+- [ ] **Step 3: Run `npx tsc --noEmit` to verify type safety**
+- [ ] **Step 4: Local commit**

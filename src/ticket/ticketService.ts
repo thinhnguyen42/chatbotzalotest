@@ -4,21 +4,18 @@ export interface Ticket {
     ticketCode: string;
     userId: string;
     roomNumber: string;
-    deviceType?: string;
+    deviceType: string;
     userText: string;
     createdAt: number;
 }
 
-// Lưu trữ đếm số lượng issue theo phòng để tạo ticketCode (vd: tk401001, tk401002)
 const roomIssueCounters = new Map<string, number>();
 const ticketStore = new Map<string, Ticket>();
 
-export const ISSUE_GUIDANCE_TEMPLATE = `Dạ, trong quá trình sinh hoạt, nếu các trang thiết bị trong phòng (điện, nước, máy lạnh, tủ lạnh...) gặp sự cố, bạn cứ yên tâm nhé.
-Bạn vui lòng gửi thông tin cho Quản gia AI theo cú pháp sau để em báo đội kỹ thuật qua xử lý ngay ạ:
-- Thiết bị gặp sự cố: [Tên thiết bị, ví dụ: Máy lạnh không mát / Vòi nước bị rò rỉ]
-- Hình ảnh/Video (nếu có): [Bạn gửi kèm vào khung chat này nhé]
-- Thời gian kỹ thuật có thể qua: [Ví dụ: Sáng mai / Cả ngày / Sau 18h]
-Đội kỹ thuật của tòa nhà sẽ liên hệ xác nhận thông tin trong thời gian sớm nhất ạ!`;
+/**
+ * Tin nhắn hỏi lại (Slot Filling) khi người dùng báo sự cố chung chung chưa rõ tên thiết bị
+ */
+export const GENERAL_SLOT_FILLING_REPLY = `Dạ, trong quá trình sinh hoạt nếu có thiết bị gặp sự cố bạn cứ yên tâm nhé. Để đội kỹ thuật chuẩn bị vật tư hỗ trợ tốt nhất, bạn vui lòng cho em biết cụ thể **thiết bị nào đang gặp sự cố** (VD: máy lạnh không mát, vòi nước rò rỉ...) và **thời gian** kỹ thuật có thể qua nhé. Nếu có hình ảnh/video bạn cứ gửi trực tiếp vào đây ạ!`;
 
 /**
  * Sinh mã Ticket theo định dạng: tk<số_phòng><số_thứ_tự_sự_cố>
@@ -40,16 +37,16 @@ export function createTicket(
     userId: string,
     roomNumber?: string,
     userText: string = "",
-    deviceType?: string
+    deviceType: string = "Thiết bị trong phòng"
 ): Ticket {
-    const validRoom = roomNumber && /^\d+$/.test(roomNumber) ? roomNumber : "000";
+    const validRoom = roomNumber && /^\d+$/.test(roomNumber) ? roomNumber : "Chưa xác định";
     const ticketCode = generateTicketCode(validRoom);
 
     const ticket: Ticket = {
         ticketCode,
         userId,
         roomNumber: validRoom,
-        deviceType: deviceType || "Sự cố kỹ thuật",
+        deviceType,
         userText,
         createdAt: Date.now(),
     };
@@ -60,10 +57,10 @@ export function createTicket(
 }
 
 /**
- * Tạo tin nhắn xác nhận Ticket gửi cho Khách Hàng
+ * Tạo tin nhắn xác nhận Ticket DUY NHẤT gửi cho Khách Hàng (End-User Interface)
  */
 export function formatUserTicketMessage(ticket: Ticket): string {
-    return `🎟️ [PHIẾU BÁO SỰ CỐ - #${ticket.ticketCode}]
+    return `🎫 [PHIẾU BÁO SỰ CỐ - #${ticket.ticketCode}]
 Dạ Quản gia AI đã khởi tạo Ticket bảo trì thành công!
 
 📍 Số phòng: ${ticket.roomNumber}
@@ -75,7 +72,7 @@ Dạ Quản gia AI đã khởi tạo Ticket bảo trì thành công!
 }
 
 /**
- * Tạo tin nhắn báo Ticket gửi cho Admin / Ban quản lý
+ * Tạo tin nhắn thông báo Ticket DÀNH RIÊNG cho Admin / Ban quản lý (Chỉ gửi ngầm cho Admin)
  */
 export function formatAdminTicketMessage(ticket: Ticket): string {
     const timeStr = new Date(ticket.createdAt).toLocaleString("vi-VN");

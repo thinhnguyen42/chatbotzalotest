@@ -84,7 +84,7 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     return;
                 }
 
-                const { replyText, recommendedButtons, extractedIntent } = await generateReplyWithButtons(userText, userId);
+                const { replyText, recommendedButtons, extractedIntent, createdTicket } = await generateReplyWithButtons(userText, userId);
                 await sendQuickReplies(userId, replyText, recommendedButtons);
 
                 // Nếu khách hỏi về Nội quy -> Tự động upload & gửi kèm hình ảnh noiQuy.jpg
@@ -94,18 +94,10 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     await sendHouseRulesImage(userId);
                 }
 
-                // Tự động khởi tạo Ticket (mã tk<room><seq>) và gửi phiếu xác nhận cho cả Khách & Admin
-                if (extractedIntent.intent === "EMERGENCY" || extractedIntent.intent === "REPORT_ISSUE" || extractedIntent.intent === "NOISE_COMPLAINT") {
-                    const ticket = createTicket(userId, extractedIntent.roomNumber, userText, extractedIntent.deviceType);
-                    console.log(`[server] Đã tạo Ticket #${ticket.ticketCode} cho user ${userId}`);
-
-                    // 1. Gửi tin nhắn xác nhận Ticket kèm Hotline Admin (0335395573) cho Khách
-                    const userTicketMsg = formatUserTicketMessage(ticket);
-                    await sendTextMessage(userId, userTicketMsg);
-
-                    // 2. Gửi Cảnh báo Ticket cấu trúc cho Admin
-                    const adminTicketMsg = formatAdminTicketMessage(ticket);
-                    console.log(`[server] Gửi TICKET #${ticket.ticketCode} cho Admin:`, adminTicketMsg);
+                // Gửi thông báo ngầm cho Admin nếu có Ticket vừa được tạo thành công
+                if (createdTicket) {
+                    const adminTicketMsg = formatAdminTicketMessage(createdTicket);
+                    console.log(`[server] Gửi TICKET #${createdTicket.ticketCode} ngầm cho Admin:`, adminTicketMsg);
                     await notifyAdmin(adminTicketMsg);
                 }
             }

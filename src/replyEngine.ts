@@ -3,7 +3,7 @@ import { classifyTopicAndReply } from "./topicEngine";
 import { removeVietnameseDiacritics, normalizeTelexTypos, splitUnspacedWords } from "./utils/textUtils";
 import { addMessageToSession, updateSessionContext, getSession } from "./memory/sessionMemory";
 import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./intentEngine";
-import { ISSUE_GUIDANCE_TEMPLATE } from "./ticket/ticketService";
+import { GENERAL_SLOT_FILLING_REPLY, createTicket, formatUserTicketMessage, Ticket } from "./ticket/ticketService";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
@@ -14,6 +14,7 @@ export interface BotReplyResult {
     replyText: string;
     recommendedButtons: QuickReplyButton[];
     extractedIntent: IntentResult;
+    createdTicket?: Ticket;
 }
 
 const SPECIAL_RULES: SpecialRule[] = [
@@ -59,6 +60,7 @@ export async function generateReplyWithButtons(userText: string, userId: string 
     const intentResult = extractIntentAndEntities(userText, session.roomNumber);
 
     let reply = "";
+    let createdTicket: Ticket | undefined;
 
     // 1. Kiểm tra các quy tắc đặc biệt (ví dụ: số phòng)
     for (const rule of SPECIAL_RULES) {
@@ -68,9 +70,17 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         }
     }
 
-    // 2. Nếu khách hỏi/báo hỏng thiết bị -> Trả về mẫu hướng dẫn báo sự cố chuẩn
-    if (!reply && intentResult.intent === "REPORT_ISSUE") {
-        reply = ISSUE_GUIDANCE_TEMPLATE;
+    // 2. BƯỚC 1 & BƯỚC 2: XỬ LÝ BÁO SỰ CỐ & TẠO TICKET
+    if (!reply && (intentResult.intent === "REPORT_ISSUE" || intentResult.intent === "EMERGENCY")) {
+        if (!intentResult.deviceType) {
+            // BƯỚC 1: SLOT FILLING - Người dùng chỉ nói chung chung (vd: "báo cáo sự cố", "phòng hỏng đồ")
+            // TUYỆT ĐỐI KHÔNG TẠO TICKET. Hỏi lại để làm rõ thiết bị.
+            reply = GENERAL_SLOT_FILLING_REPLY;
+        } else {
+            // BƯỚC 2: TẠO PHIẾU XÁC NHẬN - Người dùng đã cung cấp thiết bị cụ thể (vd: "hỏng điều hòa", "cháy bóng đèn")
+            createdTicket = createTicket(userId, session.roomNumber, userText, intentResult.deviceType);
+            reply = formatUserTicketMessage(createdTicket);
+        }
     }
 
     // 3. Phân loại theo Topic & Sub-branches
@@ -93,5 +103,6 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         replyText: reply,
         recommendedButtons: intentResult.recommendedButtons,
         extractedIntent: intentResult,
+        createdTicket,
     };
 }

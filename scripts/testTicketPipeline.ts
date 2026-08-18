@@ -1,43 +1,52 @@
 import "dotenv/config";
 import { generateReplyWithButtons } from "../src/replyEngine";
-import { createTicket, formatUserTicketMessage, formatAdminTicketMessage, ISSUE_GUIDANCE_TEMPLATE } from "../src/ticket/ticketService";
+import { formatAdminTicketMessage, GENERAL_SLOT_FILLING_REPLY } from "../src/ticket/ticketService";
 import { ADMIN_PHONE_NUMBER } from "../src/config/adminConfig";
 
-async function testTicketPipeline() {
-    console.log("==================================================");
-    console.log("  TESTING CUSTOM ISSUE REPORTING & TICKET PIPELINE ");
-    console.log("==================================================");
+async function testRevisedTicketPipeline() {
+    console.log("=========================================================");
+    console.log("  TESTING REVISED 2-STEP SLOT FILLING & GUARDRAIL FLOW  ");
+    console.log("=========================================================");
 
-    const testUserId = "zalo_ticket_user_888";
+    const testUserId = "zalo_revised_user_999";
 
-    // 1. Kiểm tra SĐT Admin
-    console.log("Admin Phone Configured:", ADMIN_PHONE_NUMBER);
+    // TEST CASE 1: Người dùng chỉ báo chung chung ("Phòng tôi có sự cố")
+    console.log("\n--- [CASE 1] Khách nhắn chung chung: 'Phòng em bị hỏng đồ, gọi thợ với' ---");
+    const res1 = await generateReplyWithButtons("Phòng em bị hỏng đồ, gọi thợ với", testUserId);
 
-    // 2. Khách báo hỏng điều hòa ở phòng 401
-    console.log("\n--- [Lượt 1] Khách: 'Em ở phòng 401, máy lạnh không mát' ---");
-    const res1 = await generateReplyWithButtons("Em ở phòng 401, máy lạnh không mát", testUserId);
+    console.log("\nBot Reply output to User:");
+    console.log(res1.replyText);
+    console.log("Is Ticket Created?:", res1.createdTicket ? "YES (FAILED!)" : "NO (CORRECT!)");
 
-    console.log("\nBot Guidance Reply:\n", res1.replyText);
+    // TEST CASE 2: Người dùng cung cấp thiết bị cụ thể ("Hỏng điều hòa ở phòng 401")
+    console.log("\n--- [CASE 2] Khách nhắn cụ thể: 'Em ở phòng 401, máy lạnh bị hỏng không mát' ---");
+    const res2 = await generateReplyWithButtons("Em ở phòng 401, máy lạnh bị hỏng không mát", testUserId);
 
-    // 3. Giả lập tạo Ticket tự động trong server
-    const ticket1 = createTicket(testUserId, res1.extractedIntent.roomNumber, "Em ở phòng 401, máy lạnh không mát", res1.extractedIntent.deviceType);
+    console.log("\nBot Reply output to User:");
+    console.log(res2.replyText);
+    console.log("Is Ticket Created?:", res2.createdTicket ? `YES #${res2.createdTicket.ticketCode}` : "NO");
 
-    console.log("\nGenerated Ticket Code:", ticket1.ticketCode);
-    console.log("\n[Dispatch to User]:\n", formatUserTicketMessage(ticket1));
-    console.log("\n[Dispatch to Admin]:\n", formatAdminTicketMessage(ticket1));
+    if (res2.createdTicket) {
+        console.log("\nSilent Admin Notification Message (Internal Only):");
+        console.log(formatAdminTicketMessage(res2.createdTicket));
+    }
 
-    // Assertions
-    const isGuidanceMatch = res1.replyText.includes("trang thiết bị trong phòng") && res1.replyText.includes("Thiết bị gặp sự cố");
-    const isTicketCodeMatch = ticket1.ticketCode === "tk401001";
-    const isAdminPhoneMatch = ADMIN_PHONE_NUMBER === "0335395573";
+    // VERIFICATIONS & GUARDRAILS
+    const case1Pass = res1.createdTicket === undefined && res1.replyText.includes("thiết bị nào đang gặp sự cố");
+    const case2Pass = res2.createdTicket !== undefined && res2.createdTicket.ticketCode === "tk401001" && res2.replyText.startsWith("🎫 [PHIẾU BÁO SỰ CỐ - #tk401001]");
+    const guardrailPass = !res2.replyText.includes("Khách hàng ID") && !res2.replyText.includes("CẦN XỬ LÝ");
 
-    if (isGuidanceMatch && isTicketCodeMatch && isAdminPhoneMatch) {
-        console.log("\n✅ CUSTOM TICKET PIPELINE TEST PASSED!");
+    console.log("\n=== VERIFICATION RESULTS ===");
+    console.log("Step 1 (Slot filling question for general inquiry):", case1Pass ? "✅ PASS" : "❌ FAIL");
+    console.log("Step 2 (Exact 🎫 Ticket format for specific device):", case2Pass ? "✅ PASS" : "❌ FAIL");
+    console.log("Strict Guardrails (No internal admin info in user chat):", guardrailPass ? "✅ PASS" : "❌ FAIL");
+
+    if (case1Pass && case2Pass && guardrailPass) {
+        console.log("\n🎉 ALL REVISED TICKET FLOW TESTS & GUARDRAILS PASSED!");
     } else {
-        console.error("\n❌ TEST FAILED!");
-        console.error("isGuidanceMatch:", isGuidanceMatch, "isTicketCodeMatch:", isTicketCodeMatch, "isAdminPhoneMatch:", isAdminPhoneMatch);
+        console.error("\n❌ TESTS FAILED!");
         process.exit(1);
     }
 }
 
-testTicketPipeline();
+testRevisedTicketPipeline();

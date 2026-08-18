@@ -24,11 +24,12 @@ const DEFAULT_BUTTONS: QuickReplyButton[] = [
     { title: "📞 Hotline", payload: "Liên hệ" },
 ];
 
+// Danh sách các thiết bị cụ thể. Nếu người dùng không nhắc tên thiết bị cụ thể -> deviceType sẽ là undefined
 const DEVICE_PATTERNS: Array<{ type: string; regex: RegExp }> = [
-    { type: "điều hòa", regex: /\b(điều hòa|máy lạnh|dieu hoa|may lanh)\b/i },
-    { type: "khóa cửa", regex: /\b(khóa cửa|khoa cua|ổ khóa|o khoa|thẻ từ|the tu|vân tay)\b/i },
-    { type: "mất điện / chập điện", regex: /\b(mất điện|mat dien|chập điện|chap dien|máy phát|ổ điện|o dien)\b/i },
-    { type: "đường nước / rò rỉ", regex: /\b(rò rỉ|ro ri|chảy nước|chay nuoc|vòi nước|voi nuoc|mất nước|mat nuoc|bồn cầu|bon cau|tắc cống|tac cong)\b/i },
+    { type: "máy lạnh / điều hòa", regex: /\b(điều hòa|máy lạnh|dieu hoa|may lanh)\b/i },
+    { type: "bóng đèn / điện", regex: /\b(bóng đèn|bong den|công tắc|cong tac|ổ điện|o dien|mất điện|mat dien|chập điện|chap dien|cháy đèn|chay den)\b/i },
+    { type: "vòi nước / bồn cầu", regex: /\b(vòi nước|voi nuoc|rò rỉ|ro ri|chảy nước|chay nuoc|mất nước|mat nuoc|bồn cầu|bon cau|tắc cống|tac cong|đường nước|duong nuoc)\b/i },
+    { type: "khóa cửa / thẻ từ", regex: /\b(khóa cửa|khoa cua|ổ khóa|o khoa|thẻ từ|the tu|vân tay)\b/i },
     { type: "tủ lạnh", regex: /\b(tủ lạnh|tu lanh)\b/i },
     { type: "máy giặt", regex: /\b(máy giặt|may giat)\b/i },
     { type: "bếp / bình nóng lạnh", regex: /\b(bếp|bep|bình nóng lạnh|binh nong lanh|bình nước nóng)\b/i },
@@ -47,7 +48,7 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         roomNumber = text.trim();
     }
 
-    // 2. Trích xuất loại thiết bị bị sự cố
+    // 2. Trích xuất loại thiết bị bị sự cố CỤ THỂ
     let deviceType: string | undefined;
     for (const item of DEVICE_PATTERNS) {
         if (item.regex.test(text) || item.regex.test(normText)) {
@@ -63,7 +64,7 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         return {
             intent: "EMERGENCY",
             roomNumber,
-            deviceType,
+            deviceType: deviceType || "Sự cố khẩn cấp",
             urgencyLevel: "HIGH",
             summary: `🚨 CẢNH BÁO KHẨN CẤP tại phòng ${roomNumber || "Chưa rõ"}: "${text}"`,
             recommendedButtons: [
@@ -91,15 +92,16 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
     }
 
     // 5. Phân loại Báo hỏng thiết bị (REPORT_ISSUE)
-    const isIssue = /\b(hư|hỏng|hư hỏng|bị hư|bị hỏng|báo hư|sự cố|báo hỏng|không lạnh|bị kẹt|rò rỉ|chảy nước|không chạy|mất điện|mất nước)\b/i.test(text) || /\b(hu|hong|hu hong|bi hu|bi hong|bao hu|su co|bao hong|khong lanh|bi ket|ro ri|chay nuoc|khong chay|mat dien|mat nuoc)\b/i.test(normText);
+    // Bao gồm cả báo hỏng chung (vd: "báo cáo sự cố", "gọi thợ") lẫn báo hỏng thiết bị cụ thể
+    const isIssue = /\b(hư|hỏng|hư hỏng|bị hư|bị hỏng|báo hư|sự cố|báo hỏng|không lạnh|bị kẹt|rò rỉ|chảy nước|không chạy|mất điện|mất nước|gọi thợ|hỏng đồ)\b/i.test(text) || /\b(hu|hong|hu hong|bi hu|bi hong|bao hu|su co|bao hong|khong lanh|bi ket|ro ri|chay nuoc|khong chay|mat dien|mat nuoc|goi tho|hong do)\b/i.test(normText);
 
     if (isIssue || deviceType) {
         return {
             intent: "REPORT_ISSUE",
             roomNumber,
-            deviceType,
+            deviceType, // Có thể là undefined nếu người dùng chỉ nói chung chung ("báo cáo sự cố")
             urgencyLevel: "MEDIUM",
-            summary: `🛠️ BÁO SỰ CỐ TẠI PHÒNG ${roomNumber || "Chưa rõ"}: ${deviceType ? `Thiết bị [${deviceType}]` : "Sự cố kỹ thuật"} - Nội dung: "${text}"`,
+            summary: `🛠️ BÁO SỰ CỐ TẠI PHÒNG ${roomNumber || "Chưa rõ"}: ${deviceType ? `Thiết bị [${deviceType}]` : "Chưa rõ thiết bị cụ thể"} - Nội dung: "${text}"`,
             recommendedButtons: [
                 { title: "🔧 Quy trình bảo trì", payload: "Bảo trì" },
                 { title: "📞 Gọi thợ hỗ trợ", payload: "Liên hệ" },
