@@ -57,18 +57,21 @@ export function createTicket(
 }
 
 /**
- * Tạo tin nhắn xác nhận Ticket DUY NHẤT gửi cho Khách Hàng (End-User Interface)
+ * Tạo tin nhắn xác nhận Ticket gửi cho Khách Hàng (End-User Interface)
  */
 export function formatUserTicketMessage(ticket: Ticket): string {
-    return `🎫 [PHIẾU BÁO SỰ CỐ - #${ticket.ticketCode}]
-Dạ Quản gia AI đã khởi tạo Ticket bảo trì thành công!
+    const roomStr = ticket.roomNumber !== "000" && ticket.roomNumber !== "Chưa xác định"
+        ? ` ở phòng ${ticket.roomNumber}`
+        : "";
 
-📍 Số phòng: ${ticket.roomNumber}
-🛠️ Thiết bị: ${ticket.deviceType}
-📝 Nội dung: "${ticket.userText}"
-📞 Hotline Kỹ thuật / Quản lý: ${ADMIN_PHONE_NUMBER}
+    return `Dạ em chào anh/chị${roomStr},
 
-Đội kỹ thuật của tòa nhà sẽ liên hệ xác nhận và qua hỗ trợ bạn trong thời gian sớm nhất ạ!`;
+Em đã ghi nhận thông tin báo sự cố ${ticket.deviceType} ("${ticket.userText}") ạ.
+
+Đội kỹ thuật của tòa nhà sẽ liên hệ xác nhận thông tin với anh/chị trong thời gian sớm nhất để sắp xếp lịch xử lý ạ. Anh/chị cứ yên tâm nhé!
+
+🎫 Mã phiếu hỗ trợ: #${ticket.ticketCode}
+📞 Hotline Kỹ thuật / Quản lý: ${ADMIN_PHONE_NUMBER}`;
 }
 
 /**
