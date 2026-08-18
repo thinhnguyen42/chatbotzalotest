@@ -83,7 +83,7 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     return;
                 }
 
-                const replyText = await generateReply(userText);
+                const replyText = await generateReply(userText, userId);
                 await sendTextMessage(userId, replyText);
 
                 // Nếu khách hỏi về Nội quy -> Tự động upload & gửi kèm hình ảnh noiQuy.jpg
