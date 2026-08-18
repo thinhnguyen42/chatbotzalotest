@@ -1,8 +1,8 @@
 import "dotenv/config";
 import path from "path";
 import express, { Request, Response } from "express";
-import { sendTextMessage, notifyAdmin, sendImageMessage, sendHouseRulesImage, exchangeCodeAndSaveTokens } from "./zaloClient";
-import { generateReply } from "./replyEngine";
+import { sendTextMessage, sendQuickReplies, notifyAdmin, sendImageMessage, sendHouseRulesImage, exchangeCodeAndSaveTokens } from "./zaloClient";
+import { generateReply, generateReplyWithButtons } from "./replyEngine";
 import { verifyZaloSignature } from "./verifyZaloSignature";
 import { checkSpamGuard } from "./spamGuard";
 import { isHumanHandoverActive, setHumanHandoverMode, clearHandoverMode, isBotSentMsgId } from "./humanHandover";
@@ -83,8 +83,8 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     return;
                 }
 
-                const replyText = await generateReply(userText, userId);
-                await sendTextMessage(userId, replyText);
+                const { replyText, recommendedButtons, extractedIntent } = await generateReplyWithButtons(userText, userId);
+                await sendQuickReplies(userId, replyText, recommendedButtons);
 
                 // Nếu khách hỏi về Nội quy -> Tự động upload & gửi kèm hình ảnh noiQuy.jpg
                 const isHouseRules = /\b(nội quy|quy định)\b/i.test(userText);
@@ -93,24 +93,19 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     await sendHouseRulesImage(userId);
                 }
 
-                // Tự động gửi thông báo khẩn cấp, phàn nàn tiếng ồn hoặc báo hỏng cho Admin
-                const isEmergency = (/\b(cháy nhà|bị cháy|đang cháy|chập điện|hỏa hoạn|nổ|cứu|khẩn cấp|rò rỉ|báo cháy|tai nạn)\b|\bcháy\b/i.test(userText)) && !/\b(phòng cháy|pccc)\b/i.test(userText);
-                const isNoiseComplaint = /\b(ồn|ồn ào|tiếng ồn|hàng xóm ồn|mở nhạc to|karaoke|hát hò)\b/i.test(userText);
-                const isRoomNumber = /^(phòng\s*|p\.?\s*)?\d{3,4}$/i.test(userText.trim());
-                const isIssueReport = /\b(hư|hỏng|hư hỏng|bị hư|bị hỏng|báo hư|sự cố|báo hỏng|không lạnh|bị kẹt|rò rỉ|chảy nước|không chạy|mất điện|mất nước)\b/i.test(userText);
-
-                if (isEmergency) {
-                    const emergencyNotice = `[CANH BAO KHAN CAP - XU LY NGAY]\nNguoi gui ID: ${userId}\nNoi dung tin nhan: "${userText}"\nThoi gian: ${new Date().toLocaleString("vi-VN")}\nBan quan ly/Admin vui long lien he khach hang hoac kiem tra xu ly gap!`;
-                    console.log(`[server] Gửi CANH BAO KHAN CAP cho Admin:`, emergencyNotice);
+                // Tự động gửi thông báo Ticket có cấu trúc cho Admin nếu phát hiện sự cố, khẩn cấp hoặc phàn nàn
+                if (extractedIntent.intent === "EMERGENCY") {
+                    const emergencyNotice = `[🚨 TICKET KHẨN CẤP - XỬ LÝ NGAY]\nKhách hàng ID: ${userId}\nSố phòng: ${extractedIntent.roomNumber || "Chưa rõ"}\nTóm tắt: ${extractedIntent.summary}\nThời gian: ${new Date().toLocaleString("vi-VN")}\nBan quản lý/Admin vui lòng liên hệ khách hàng ngay!`;
+                    console.log(`[server] Gửi CẢNH BÁO KHẨN CẤP cho Admin:`, emergencyNotice);
                     await notifyAdmin(emergencyNotice);
-                } else if (isNoiseComplaint) {
-                    const noiseNotice = `[PHAN NAN TIENG ON - XU LY NGAY]\nKhach hang ID: ${userId}\nNoi dung phan nan: "${userText}"\nThoi gian: ${new Date().toLocaleString("vi-VN")}\nAdmin/Ban quan ly vui long kiem tra nhac nho khu vuc gay on!`;
-                    console.log(`[server] Gửi thông báo PHAN NAN TIENG ON cho Admin:`, noiseNotice);
+                } else if (extractedIntent.intent === "NOISE_COMPLAINT") {
+                    const noiseNotice = `[🔊 TICKET PHÀN NÀN TIẾNG ỒN]\nKhách hàng ID: ${userId}\nSố phòng: ${extractedIntent.roomNumber || "Chưa rõ"}\nTóm tắt: ${extractedIntent.summary}\nThời gian: ${new Date().toLocaleString("vi-VN")}`;
+                    console.log(`[server] Gửi TICKET TIẾNG ỒN cho Admin:`, noiseNotice);
                     await notifyAdmin(noiseNotice);
-                } else if (isRoomNumber || isIssueReport) {
-                    const adminNotice = `[YEU CAU HO TRO / BAO HONG]\nKhach hang ID: ${userId}\nNoi dung: "${userText}"\nThoi gian: ${new Date().toLocaleString("vi-VN")}`;
-                    console.log(`[server] Gửi thông báo hỗ trợ cho Admin:`, adminNotice);
-                    await notifyAdmin(adminNotice);
+                } else if (extractedIntent.intent === "REPORT_ISSUE") {
+                    const issueNotice = `[🛠️ TICKET BÁO HỎNG THIẾT BỊ]\nKhách hàng ID: ${userId}\nSố phòng: ${extractedIntent.roomNumber || "Chưa rõ"}\nThiết bị: ${extractedIntent.deviceType || "Không xác định"}\nTóm tắt: ${extractedIntent.summary}\nThời gian: ${new Date().toLocaleString("vi-VN")}`;
+                    console.log(`[server] Gửi TICKET BÁO HỎNG cho Admin:`, issueNotice);
+                    await notifyAdmin(issueNotice);
                 }
             }
         }

@@ -1,11 +1,18 @@
 import { generateRagReply } from "./rag/ragEngine";
 import { classifyTopicAndReply } from "./topicEngine";
 import { removeVietnameseDiacritics, normalizeTelexTypos, splitUnspacedWords } from "./utils/textUtils";
-import { addMessageToSession, updateSessionContext } from "./memory/sessionMemory";
+import { addMessageToSession, updateSessionContext, getSession } from "./memory/sessionMemory";
+import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./intentEngine";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
     reply: string;
+}
+
+export interface BotReplyResult {
+    replyText: string;
+    recommendedButtons: QuickReplyButton[];
+    extractedIntent: IntentResult;
 }
 
 const SPECIAL_RULES: SpecialRule[] = [
@@ -22,7 +29,6 @@ const SPECIAL_RULES: SpecialRule[] = [
 
 /**
  * Trích xuất số phòng nếu xuất hiện trong câu nói của người dùng.
- * Ví dụ: "Tôi ở phòng 202", "P301 bị hỏng máy lạnh", "Phong 105"
  */
 function extractAndSaveRoomNumber(userId: string, userText: string, normText: string): void {
     const roomMatch = userText.match(/(?:phòng|phong|p\.?)\s*(\d{3,4})/i) || normText.match(/(?:phong|p\.?)\s*(\d{3,4})/i);
@@ -36,12 +42,20 @@ function extractAndSaveRoomNumber(userId: string, userText: string, normText: st
 }
 
 export async function generateReply(userText: string, userId: string = "default_user"): Promise<string> {
+    const res = await generateReplyWithButtons(userText, userId);
+    return res.replyText;
+}
+
+export async function generateReplyWithButtons(userText: string, userId: string = "default_user"): Promise<BotReplyResult> {
     const cleanText = splitUnspacedWords(normalizeTelexTypos(userText));
     const normText = removeVietnameseDiacritics(cleanText);
 
     // 0. Lưu tin nhắn của người dùng vào session memory & trích xuất số phòng
     addMessageToSession(userId, "user", userText);
     extractAndSaveRoomNumber(userId, userText, normText);
+
+    const session = getSession(userId);
+    const intentResult = extractIntentAndEntities(userText, session.roomNumber);
 
     let reply = "";
 
@@ -69,5 +83,9 @@ export async function generateReply(userText: string, userId: string = "default_
     // 4. Lưu phản hồi của assistant vào session memory
     addMessageToSession(userId, "assistant", reply);
 
-    return reply;
+    return {
+        replyText: reply,
+        recommendedButtons: intentResult.recommendedButtons,
+        extractedIntent: intentResult,
+    };
 }
