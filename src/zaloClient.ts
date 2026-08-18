@@ -285,10 +285,17 @@ export async function sendQuickReplies(
     }
 }
 
-export async function notifyAdmin(text: string): Promise<void> {
+export async function notifyAdmin(text: string, currentSenderUserId?: string): Promise<void> {
     const adminUserId = process.env.ZALO_ADMIN_USER_ID;
     if (!adminUserId) {
         console.log("[zaloClient] Bỏ qua gửi admin (Chưa cấu hình ZALO_ADMIN_USER_ID trong .env)");
+        return;
+    }
+
+    // Nếu ID Admin trùng với ID người dùng đang nhắn tin testing -> Ghi log ra console server thay vì gửi trùng vào chat
+    if (currentSenderUserId && adminUserId === currentSenderUserId) {
+        console.log(`[zaloClient] ID Admin trùng với User đang testing (${adminUserId}). Đã ghi log Ticket ngầm ra Console Server:`);
+        console.log(`----------------------------------------\n${text}\n----------------------------------------`);
         return;
     }
 

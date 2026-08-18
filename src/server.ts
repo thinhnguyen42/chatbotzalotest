@@ -98,7 +98,7 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                 if (createdTicket) {
                     const adminTicketMsg = formatAdminTicketMessage(createdTicket);
                     console.log(`[server] Gửi TICKET #${createdTicket.ticketCode} ngầm cho Admin:`, adminTicketMsg);
-                    await notifyAdmin(adminTicketMsg);
+                    await notifyAdmin(adminTicketMsg, userId);
                 }
             }
         }
