@@ -1,6 +1,6 @@
 import { removeVietnameseDiacritics, normalizeTelexTypos, splitUnspacedWords } from "./utils/textUtils";
 
-export type IntentType = "EMERGENCY" | "REPORT_ISSUE" | "NOISE_COMPLAINT" | "BILLING" | "GENERAL_FAQ";
+export type IntentType = "EMERGENCY" | "REPORT_ISSUE" | "NOISE_COMPLAINT" | "BILLING" | "ADMIN_REQUEST" | "GENERAL_FAQ";
 
 export interface QuickReplyButton {
     title: string;
@@ -25,7 +25,6 @@ const DEFAULT_BUTTONS: QuickReplyButton[] = [
 ];
 
 // Danh sách các thiết bị cụ thể.
-// Dùng regex khớp trên normText (tiếng Việt đã bỏ dấu) với cụm từ chính xác (tránh trùng từ 'voi' trong 'với')
 const DEVICE_PATTERNS: Array<{ type: string; regex: RegExp }> = [
     { type: "bóng đèn / điện", regex: /\b(den|bong den|cong tac|o dien|mat dien|chap dien|chay den|den sang|den hong)\b/i },
     { type: "máy lạnh / điều hòa", regex: /\b(dieu hoa|may lanh)\b/i },
@@ -58,7 +57,24 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         }
     }
 
-    // 3. Phân loại Khẩn cấp (EMERGENCY) - Cháy, nổ, chập điện, cấp cứu
+    // 3. Phân loại Yêu cầu gặp Admin / Ban Quản Lý (ADMIN_REQUEST)
+    const isAdminReq = /\b(admin|quản lý|quan ly|gặp admin|gap admin|gọi admin|goi admin|gặp quản lý|gap quan ly|gặp nhân viên|gap nhan vien|nhân viên|nhan vien|chủ nhà|chu nha|hỗ trợ trực tiếp|ho tro truc tiep)\b/i.test(text) || /\b(admin|quan ly|gap admin|goi admin|gap quan ly|gap nhan vien|nhan vien|chu nha|ho tro truc tiep)\b/i.test(normText);
+
+    if (isAdminReq) {
+        return {
+            intent: "ADMIN_REQUEST",
+            roomNumber,
+            deviceType: "Yêu cầu gặp Admin / Ban quản lý",
+            urgencyLevel: "HIGH",
+            summary: `📩 YÊU CẦU GẶP ADMIN / QUẢN LÝ từ phòng ${roomNumber || "Chưa rõ"}: "${text}"`,
+            recommendedButtons: [
+                { title: "📞 Gọi Hotline Admin", payload: "Liên hệ" },
+                { title: "🔧 Báo sự cố", payload: "Báo sự cố" },
+            ],
+        };
+    }
+
+    // 4. Phân loại Khẩn cấp (EMERGENCY) - Cháy, nổ, chập điện, cấp cứu
     const isEmergency = (/\b(chay nha|bi chay|dang chay|chap dien|hoa hoan|boc khoi|phat no|cuu voi|khan cap|bao chay|tai nan)\b/i.test(normText)) && !/\b(phong chay|pccc|chay nuoc)\b/i.test(normText);
 
     if (isEmergency) {
@@ -75,7 +91,7 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         };
     }
 
-    // 4. Phân loại Phàn nàn Tiếng ồn (NOISE_COMPLAINT)
+    // 5. Phân loại Phàn nàn Tiếng ồn (NOISE_COMPLAINT)
     const isNoise = /\b(on|on ao|tieng on|hang xom on|mo nhac to|karaoke|hat ho)\b/i.test(normText);
 
     if (isNoise) {
@@ -92,7 +108,7 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         };
     }
 
-    // 5. Phân loại Báo hỏng thiết bị (REPORT_ISSUE)
+    // 6. Phân loại Báo hỏng thiết bị (REPORT_ISSUE)
     const isIssue = /\b(hu|hong|hu hong|bi hu|bi hong|bao hu|su co|bao hong|khong lanh|bi ket|ro ri|chay nuoc|khong chay|mat dien|mat nuoc|goi tho|hong do|khong sang|tat|chay|khong len|hu den|hong den)\b/i.test(normText);
 
     if (isIssue || deviceType) {
@@ -109,7 +125,7 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         };
     }
 
-    // 6. Phân loại Chi phí / Hóa đơn (BILLING)
+    // 7. Phân loại Chi phí / Hóa đơn (BILLING)
     const isBilling = /\b(tien dien|tien nuoc|phi dich vu|hoa don|tien nha|gia phong|chi phi)\b/i.test(normText);
 
     if (isBilling) {
@@ -126,7 +142,7 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         };
     }
 
-    // 7. Mặc định: Thông tin chung (GENERAL_FAQ)
+    // 8. Mặc định: Thông tin chung (GENERAL_FAQ)
     return {
         intent: "GENERAL_FAQ",
         roomNumber,

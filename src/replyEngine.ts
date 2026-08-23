@@ -4,6 +4,7 @@ import { removeVietnameseDiacritics, normalizeTelexTypos, splitUnspacedWords } f
 import { addMessageToSession, updateSessionContext, getSession } from "./memory/sessionMemory";
 import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./intentEngine";
 import { GENERAL_SLOT_FILLING_REPLY, createTicket, formatUserTicketMessage, Ticket } from "./ticket/ticketService";
+import { ADMIN_PHONE_NUMBER } from "./config/adminConfig";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
@@ -70,7 +71,13 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         }
     }
 
-    // 2. BƯỚC 1 & BƯỚC 2: XỬ LÝ BÁO SỰ CỐ & TẠO TICKET
+    // 2. XỬ LÝ YÊU CẦU GẶP ADMIN / BAN QUẢN LÝ (ADMIN_REQUEST)
+    if (!reply && intentResult.intent === "ADMIN_REQUEST") {
+        createdTicket = createTicket(userId, session.roomNumber, userText, "Yêu cầu gặp Admin / Ban quản lý");
+        reply = `Dạ, Quản gia AI đã chuyển thông báo yêu cầu hỗ trợ của bạn đến Ban Quản lý / Admin tòa nhà rồi ạ!\n\n📞 Trong trường hợp cần xử lý gấp, bạn có thể gọi trực tiếp Hotline Admin: ${ADMIN_PHONE_NUMBER}.\nBan quản lý sẽ kiểm tra tin nhắn và liên hệ hỗ trợ bạn trong thời gian sớm nhất ạ!`;
+    }
+
+    // 3. BƯỚC 1 & BƯỚC 2: XỬ LÝ BÁO SỰ CỐ & TẠO TICKET
     if (!reply && (intentResult.intent === "REPORT_ISSUE" || intentResult.intent === "EMERGENCY")) {
         if (!intentResult.deviceType) {
             // BƯỚC 1: SLOT FILLING - Người dùng chỉ nói chung chung (vd: "báo cáo sự cố", "phòng hỏng đồ")
@@ -83,7 +90,7 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         }
     }
 
-    // 3. Phân loại theo Topic & Sub-branches
+    // 4. Phân loại theo Topic & Sub-branches
     if (!reply) {
         const topicResult = classifyTopicAndReply(userText);
         if (topicResult.matched) {
@@ -91,12 +98,12 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         }
     }
 
-    // 4. Fallback sang RAG / Microservices / LLM Synthesis nếu chưa có câu trả lời
+    // 5. Fallback sang RAG / Microservices / LLM Synthesis nếu chưa có câu trả lời
     if (!reply) {
         reply = await generateRagReply(userText, userId);
     }
 
-    // 5. Lưu phản hồi của assistant vào session memory
+    // 6. Lưu phản hồi của assistant vào session memory
     addMessageToSession(userId, "assistant", reply);
 
     return {
