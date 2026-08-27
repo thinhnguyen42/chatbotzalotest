@@ -3,8 +3,9 @@ import { classifyTopicAndReply } from "./topicEngine";
 import { removeVietnameseDiacritics, normalizeTelexTypos, splitUnspacedWords } from "./utils/textUtils";
 import { addMessageToSession, updateSessionContext, getSession } from "./memory/sessionMemory";
 import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./intentEngine";
-import { GENERAL_SLOT_FILLING_REPLY, createTicket, formatUserTicketMessage, Ticket } from "./ticket/ticketService";
+import { INCIDENT_FORM_TEMPLATE_REPLY, createTicket, formatUserTicketMessage, formatAdminTicketMessage, Ticket } from "./ticket/ticketService";
 import { ADMIN_PHONE_NUMBER } from "./config/adminConfig";
+import { notifyAdmin } from "./zaloClient";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
@@ -16,6 +17,7 @@ export interface BotReplyResult {
     recommendedButtons: QuickReplyButton[];
     extractedIntent: IntentResult;
     createdTicket?: Ticket;
+    adminNotificationMsg?: string;
 }
 
 const SPECIAL_RULES: SpecialRule[] = [
@@ -59,9 +61,35 @@ export async function generateReplyWithButtons(userText: string, userId: string 
 
     const session = getSession(userId);
     const intentResult = extractIntentAndEntities(userText, session.roomNumber);
+    if (intentResult.phone) {
+        updateSessionContext(userId, { phone: intentResult.phone });
+    }
+
+    // Pre-filter: Direct Admin Forwarding for exact "admin", "lien he", "liên hệ" messages
+    if (/^(admin|lien\s*he|liên\s*hệ)$/i.test(userText.trim())) {
+        const phone = (session as any).phone || intentResult.phone || "Chưa cung cấp";
+        const roomNumber = session.roomNumber || "Chưa xác định";
+        const timeStr = new Date().toLocaleString("vi-VN");
+        const adminMsg = `📩 [YÊU CẦU CHUYỂN GIAO BAN QUẢN LÝ / ADMIN]\n👤 ID Zalo: ${userId}\n📞 Số điện thoại: ${phone}\n🏠 Số phòng: ${roomNumber}\n⏰ Thời gian: ${timeStr}`;
+
+        console.log(`[replyEngine] Direct admin forward for user ${userId}:`, adminMsg);
+
+        const directAdminReply = `Dạ, Quản gia AI đã chuyển thông báo yêu cầu hỗ trợ của bạn đến Ban Quản lý / Admin tòa nhà rồi ạ!\n\n📞 Trong trường hợp cần xử lý gấp, bạn có thể gọi trực tiếp Hotline Admin: ${ADMIN_PHONE_NUMBER}.\nBan quản lý sẽ kiểm tra tin nhắn và liên hệ hỗ trợ bạn trong thời gian sớm nhất ạ!`;
+
+        addMessageToSession(userId, "assistant", directAdminReply);
+
+        return {
+            replyText: directAdminReply,
+            recommendedButtons: intentResult.recommendedButtons,
+            extractedIntent: intentResult,
+            createdTicket: undefined,
+            adminNotificationMsg: adminMsg,
+        };
+    }
 
     let reply = "";
     let createdTicket: Ticket | undefined;
+    let adminNotificationMsg: string | undefined;
 
     // 1. Kiểm tra các quy tắc đặc biệt (ví dụ: số phòng)
     for (const rule of SPECIAL_RULES) {
@@ -73,20 +101,38 @@ export async function generateReplyWithButtons(userText: string, userId: string 
 
     // 2. XỬ LÝ YÊU CẦU GẶP ADMIN / BAN QUẢN LÝ (ADMIN_REQUEST)
     if (!reply && intentResult.intent === "ADMIN_REQUEST") {
-        createdTicket = createTicket(userId, session.roomNumber, userText, "Yêu cầu gặp Admin / Ban quản lý");
+        createdTicket = createTicket(
+            userId,
+            session.roomNumber,
+            userText,
+            "Yêu cầu gặp Admin / Ban quản lý",
+            intentResult.preferredTime,
+            intentResult.phone
+        );
         reply = `Dạ, Quản gia AI đã chuyển thông báo yêu cầu hỗ trợ của bạn đến Ban Quản lý / Admin tòa nhà rồi ạ!\n\n📞 Trong trường hợp cần xử lý gấp, bạn có thể gọi trực tiếp Hotline Admin: ${ADMIN_PHONE_NUMBER}.\nBan quản lý sẽ kiểm tra tin nhắn và liên hệ hỗ trợ bạn trong thời gian sớm nhất ạ!`;
+        adminNotificationMsg = formatAdminTicketMessage(createdTicket);
     }
 
     // 3. BƯỚC 1 & BƯỚC 2: XỬ LÝ BÁO SỰ CỐ & TẠO TICKET
     if (!reply && (intentResult.intent === "REPORT_ISSUE" || intentResult.intent === "EMERGENCY")) {
-        if (!intentResult.deviceType) {
-            // BƯỚC 1: SLOT FILLING - Người dùng chỉ nói chung chung (vd: "báo cáo sự cố", "phòng hỏng đồ")
-            // TUYỆT ĐỐI KHÔNG TẠO TICKET. Hỏi lại để làm rõ thiết bị.
-            reply = GENERAL_SLOT_FILLING_REPLY;
+        const hasValidRoom = session.roomNumber && session.roomNumber !== "Chưa xác định" && session.roomNumber !== "000";
+        if (!intentResult.deviceType || !hasValidRoom) {
+            // Chưa đủ thông tin thiết bị HOẶC chưa có số phòng -> Trả về Mẫu thông tin báo sự cố để người dùng nhập đầy đủ.
+            // TUYỆT ĐỐI KHÔNG TẠO TICKET KHI CHƯA RÕ SỐ PHÒNG HOẶC THIẾT BỊ.
+            reply = INCIDENT_FORM_TEMPLATE_REPLY;
         } else {
-            // BƯỚC 2: TẠO PHIẾU XÁC NHẬN - Người dùng đã cung cấp thiết bị cụ thể (vd: "hỏng điều hòa", "cháy bóng đèn")
-            createdTicket = createTicket(userId, session.roomNumber, userText, intentResult.deviceType);
+            // Đã đủ thiết bị VÀ số phòng -> Tạo phiếu xác nhận & gửi báo cáo cho Admin
+            const phoneToUse = intentResult.phone || (session as any).phone;
+            createdTicket = createTicket(
+                userId,
+                session.roomNumber,
+                userText,
+                intentResult.deviceType,
+                intentResult.preferredTime,
+                phoneToUse
+            );
             reply = formatUserTicketMessage(createdTicket);
+            adminNotificationMsg = formatAdminTicketMessage(createdTicket);
         }
     }
 
@@ -111,5 +157,6 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         recommendedButtons: intentResult.recommendedButtons,
         extractedIntent: intentResult,
         createdTicket,
+        adminNotificationMsg,
     };
 }

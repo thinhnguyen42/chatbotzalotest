@@ -292,11 +292,22 @@ export async function notifyAdmin(text: string): Promise<void> {
         return;
     }
 
-    try {
-        await sendTextMessage(adminUserId, text);
-        console.log(`[zaloClient] Đã gửi thông báo Ticket cho Admin (${adminUserId}) thành công!`);
-    } catch (err: any) {
-        console.error("[zaloClient] Lỗi khi gửi thông báo cho Admin:", err.message);
+    let attempts = 0;
+    const maxAttempts = 3;
+    while (attempts < maxAttempts) {
+        try {
+            await sendTextMessage(adminUserId, text);
+            console.log(`[zaloClient] Đã gửi thông báo cho Admin (${adminUserId}) thành công!`);
+            return;
+        } catch (err: any) {
+            attempts++;
+            console.warn(`[zaloClient] Thử lại gửi thông báo cho Admin (Lần ${attempts}/${maxAttempts}): ${err.message}`);
+            if (attempts >= maxAttempts) {
+                console.error("[zaloClient] Thất bại khi gửi thông báo cho Admin sau 3 lần:", err.message);
+            } else {
+                await new Promise((r) => setTimeout(r, 1000));
+            }
+        }
     }
 }
 

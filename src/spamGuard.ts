@@ -98,9 +98,12 @@ export function isJunkText(text: string): boolean {
     // 3. Chuỗi phụ âm liên tiếp >= 5 ký tự (Gõ phím bừa: "asdfghjkl", "sdfghjkl", "bczxqv")
     if (/[bcdfghjklmnpqrstvwxzđ]{5,}/i.test(trimmed)) return true;
 
-    // 4. Chuỗi từ dài không có nguyên âm tiếng Việt/Anh
+    // 4. Chuỗi từ dài không có nguyên âm tiếng Việt/Anh (Bỏ qua từ chỉ toàn chữ số / số điện thoại)
     const words = trimmed.split(/\s+/);
     for (const word of words) {
+        // Bỏ qua các chuỗi chỉ chứa chữ số, số điện thoại, hoặc số kèm dấu chấm/phẩy (vd: 0123456788, 101, 14h)
+        if (/^[\d.,\-\/]+$/.test(word) || /^\d+[a-z]?$/i.test(word)) continue;
+
         if (
             word.length >= 5 &&
             !/[aeiouyáàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵ]/i.test(word)

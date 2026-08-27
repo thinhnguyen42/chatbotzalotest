@@ -7,15 +7,35 @@ export interface Ticket {
     deviceType: string;
     userText: string;
     createdAt: number;
+    preferredTime?: string;
+    phone?: string;
 }
 
 const roomIssueCounters = new Map<string, number>();
 const ticketStore = new Map<string, Ticket>();
 
 /**
+ * Tin nhắn mẫu thông tin báo sự cố kèm ví dụ minh họa
+ */
+export const INCIDENT_FORM_TEMPLATE_REPLY = `Dạ, Quản gia AI đã nhận được yêu cầu báo sự cố của bạn!
+
+Để đội kỹ thuật chuẩn bị vật tư và đến hỗ trợ nhanh nhất, bạn vui lòng nhắn lại theo mẫu dưới đây giúp em nhé:
+
+📋 MẪU THÔNG TIN BÁO SỰ CỐ:
+• Số phòng: [Nhập số phòng]
+• Thiết bị / Sự cố: [Mô tả thiết bị hỏng]
+• Thời gian hỗ trợ: [Khung giờ kỹ thuật qua]
+• Số điện thoại: [SĐT liên hệ]
+
+💡 MẪU TIN NHẮN MẪU (Bạn có thể copy & sửa lại):
+1️⃣ "Phòng 302 hỏng điều hòa không mát, kỹ thuật qua lúc 14h chiều nay, SĐT 0912345678"
+2️⃣ "Phòng 101 rò rỉ vòi nước phòng tắm, rảnh sáng mai 9h, SĐT 0987654321"
+3️⃣ "Phòng 405 cháy bóng đèn phòng khách, qua lúc nào cũng được, SĐT 0905123456"`;
+
+/**
  * Tin nhắn hỏi lại (Slot Filling) khi người dùng báo sự cố chung chung chưa rõ tên thiết bị
  */
-export const GENERAL_SLOT_FILLING_REPLY = `Dạ, trong quá trình sinh hoạt nếu có thiết bị gặp sự cố bạn cứ yên tâm nhé. Để đội kỹ thuật chuẩn bị vật tư hỗ trợ tốt nhất, bạn vui lòng cho em biết cụ thể **thiết bị nào đang gặp sự cố** (VD: máy lạnh không mát, vòi nước rò rỉ...) và **thời gian** kỹ thuật có thể qua nhé. Nếu có hình ảnh/video bạn cứ gửi trực tiếp vào đây ạ!`;
+export const GENERAL_SLOT_FILLING_REPLY = INCIDENT_FORM_TEMPLATE_REPLY;
 
 /**
  * Sinh mã Ticket theo định dạng: tk<số_phòng><số_thứ_tự_sự_cố>
@@ -37,7 +57,9 @@ export function createTicket(
     userId: string,
     roomNumber?: string,
     userText: string = "",
-    deviceType: string = "Thiết bị trong phòng"
+    deviceType: string = "Thiết bị trong phòng",
+    preferredTime?: string,
+    phone?: string
 ): Ticket {
     const validRoom = roomNumber && /^\d+$/.test(roomNumber) ? roomNumber : "Chưa xác định";
     const ticketCode = generateTicketCode(validRoom);
@@ -49,6 +71,8 @@ export function createTicket(
         deviceType,
         userText,
         createdAt: Date.now(),
+        preferredTime,
+        phone,
     };
 
     ticketStore.set(ticketCode, ticket);
@@ -61,16 +85,20 @@ export function createTicket(
  */
 export function formatUserTicketMessage(ticket: Ticket): string {
     const roomStr = ticket.roomNumber !== "000" && ticket.roomNumber !== "Chưa xác định"
-        ? ` ở phòng ${ticket.roomNumber}`
-        : "";
+        ? ticket.roomNumber
+        : "Chưa xác định";
+    const timeStr = ticket.preferredTime || "Trong giờ hành chính";
+    const phoneStr = ticket.phone || "Chưa cung cấp";
 
-    return `Dạ em chào anh/chị${roomStr},
-
-Em đã ghi nhận thông tin báo sự cố ${ticket.deviceType} ("${ticket.userText}") ạ.
-
-Đội kỹ thuật của tòa nhà sẽ liên hệ xác nhận thông tin với anh/chị trong thời gian sớm nhất để sắp xếp lịch xử lý ạ. Anh/chị cứ yên tâm nhé!
+    return `Dạ, Quản gia AI đã ghi nhận yêu cầu báo sự cố của bạn!
 
 🎫 Mã phiếu hỗ trợ: #${ticket.ticketCode}
+• Số phòng: ${roomStr}
+• Thiết bị / Sự cố: ${ticket.deviceType}
+• Thời gian hỗ trợ: ${timeStr}
+• Số điện thoại: ${phoneStr}
+
+Đội kỹ thuật của tòa nhà sẽ liên hệ xác nhận thông tin với bạn để hỗ trợ xử lý ạ.
 📞 Hotline Kỹ thuật / Quản lý: ${ADMIN_PHONE_NUMBER}`;
 }
 
@@ -78,12 +106,17 @@ Em đã ghi nhận thông tin báo sự cố ${ticket.deviceType} ("${ticket.use
  * Tạo tin nhắn thông báo Ticket DÀNH RIÊNG cho Admin / Ban quản lý (Chỉ gửi ngầm cho Admin)
  */
 export function formatAdminTicketMessage(ticket: Ticket): string {
-    const timeStr = new Date(ticket.createdAt).toLocaleString("vi-VN");
+    const timeCreated = new Date(ticket.createdAt).toLocaleString("vi-VN");
+    const prefTime = ticket.preferredTime || "Trong giờ hành chính";
+    const phoneStr = ticket.phone || "Chưa cung cấp";
+
     return `🛠️ [TICKET SỰ CỐ MỚI #${ticket.ticketCode} - CẦN XỬ LÝ]
-Khách hàng ID: ${ticket.userId}
-Số phòng: ${ticket.roomNumber}
-Thiết bị: ${ticket.deviceType}
-Nội dung báo: "${ticket.userText}"
-Hotline liên hệ Admin: ${ADMIN_PHONE_NUMBER}
-Thời gian tạo: ${timeStr}`;
+• Mã ticket: #${ticket.ticketCode}
+• Khách hàng (Zalo User ID): ${ticket.userId}
+• Số phòng: ${ticket.roomNumber}
+• Thiết bị: ${ticket.deviceType}
+• Nội dung báo: "${ticket.userText}"
+• Thời gian hỗ trợ mong muốn: ${prefTime}
+• Số điện thoại liên hệ: ${phoneStr}
+• Thời gian tạo: ${timeCreated}`;
 }

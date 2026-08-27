@@ -8,6 +8,7 @@ export interface UserSession {
     userId: string;
     roomNumber?: string;
     userName?: string;
+    phone?: string;
     history: Message[];
     updatedAt: number;
 }
@@ -60,15 +61,18 @@ export function addMessageToSession(userId: string, role: "user" | "assistant", 
 }
 
 /**
- * Cập nhật thông tin ngữ cảnh khách hàng (ví dụ: số phòng, tên).
+ * Cập nhật thông tin ngữ cảnh khách hàng (ví dụ: số phòng, tên, số điện thoại).
  */
-export function updateSessionContext(userId: string, context: { roomNumber?: string; userName?: string }): void {
+export function updateSessionContext(userId: string, context: { roomNumber?: string; userName?: string; phone?: string }): void {
     const session = getSession(userId);
     if (context.roomNumber) {
         session.roomNumber = context.roomNumber;
     }
     if (context.userName) {
         session.userName = context.userName;
+    }
+    if (context.phone) {
+        session.phone = context.phone;
     }
     session.updatedAt = Date.now();
 }

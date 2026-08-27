@@ -14,6 +14,8 @@ export interface IntentResult {
     urgencyLevel: "HIGH" | "MEDIUM" | "LOW";
     summary: string;
     recommendedButtons: QuickReplyButton[];
+    preferredTime?: string;
+    phone?: string;
 }
 
 const DEFAULT_BUTTONS: QuickReplyButton[] = [
@@ -57,7 +59,26 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         }
     }
 
-    // 3. Phân loại Yêu cầu gặp Admin / Ban Quản Lý (ADMIN_REQUEST)
+    // 3. Trích xuất số điện thoại (VD: 0912345678, 1234567890, SĐT 1234567890, sdt: 0987654321, 0912.345.678, +84912345678)
+    let phone: string | undefined;
+    const keywordPhoneMatch = text.match(/(?:sđt|sdt|dt|phone|dienthoai|so dien thoai)\s*:?\s*(\+?\d[\d\s.-]{8,14}\d)/i) || normText.match(/(?:sdt|dt|phone|dienthoai|so dien thoai)\s*:?\s*(\+?\d[\d\s.-]{8,14}\d)/i);
+    if (keywordPhoneMatch && keywordPhoneMatch[1]) {
+        phone = keywordPhoneMatch[1].replace(/[\s.-]/g, "");
+    } else {
+        const standalonePhoneMatch = text.match(/\b(0?\d{9,10})\b/);
+        if (standalonePhoneMatch && standalonePhoneMatch[1]) {
+            phone = standalonePhoneMatch[1];
+        }
+    }
+
+    // 4. Trích xuất thời gian hỗ trợ (VD: 14h chiều nay, qua lúc 14h chiều nay, rảnh sáng mai 9h, qua lúc nào cũng được)
+    let preferredTime: string | undefined;
+    const timeMatch = text.match(/(?:qua lúc|qua kiểm tra|qua|rảnh|hỗ trợ|thời gian)\s+([^,.\n]+)/i) || text.match(/\b(\d{1,2}h(?:\d{2})?\s*(?:chiều|sáng|tối)?(?:\s*nay|\s*mai)?|sáng mai|chiều nay|tối nay|ngày mai|lúc nào cũng được|giờ hành chính)\b/i);
+    if (timeMatch && timeMatch[1]) {
+        preferredTime = timeMatch[1].trim();
+    }
+
+    // 5. Phân loại Yêu cầu gặp Admin / Ban Quản Lý (ADMIN_REQUEST)
     const isAdminReq = /\b(admin|quản lý|quan ly|gặp admin|gap admin|gọi admin|goi admin|gặp quản lý|gap quan ly|gặp nhân viên|gap nhan vien|nhân viên|nhan vien|chủ nhà|chu nha|hỗ trợ trực tiếp|ho tro truc tiep)\b/i.test(text) || /\b(admin|quan ly|gap admin|goi admin|gap quan ly|gap nhan vien|nhan vien|chu nha|ho tro truc tiep)\b/i.test(normText);
 
     if (isAdminReq) {
@@ -71,10 +92,12 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
                 { title: "📞 Gọi Hotline Admin", payload: "Liên hệ" },
                 { title: "🔧 Báo sự cố", payload: "Báo sự cố" },
             ],
+            preferredTime,
+            phone,
         };
     }
 
-    // 4. Phân loại Khẩn cấp (EMERGENCY) - Cháy, nổ, chập điện, cấp cứu
+    // 6. Phân loại Khẩn cấp (EMERGENCY) - Cháy, nổ, chập điện, cấp cứu
     const isEmergency = (/\b(chay nha|bi chay|dang chay|chap dien|hoa hoan|boc khoi|phat no|cuu voi|khan cap|bao chay|tai nan)\b/i.test(normText)) && !/\b(phong chay|pccc|chay nuoc)\b/i.test(normText);
 
     if (isEmergency) {
@@ -88,10 +111,12 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
                 { title: "📞 GỌI HOTLINE GẤP", payload: "Liên hệ" },
                 { title: "🚨 An toàn PCCC", payload: "PCCC" },
             ],
+            preferredTime,
+            phone,
         };
     }
 
-    // 5. Phân loại Phàn nàn Tiếng ồn (NOISE_COMPLAINT)
+    // 7. Phân loại Phàn nàn Tiếng ồn (NOISE_COMPLAINT)
     const isNoise = /\b(on|on ao|tieng on|hang xom on|mo nhac to|karaoke|hat ho)\b/i.test(normText);
 
     if (isNoise) {
@@ -105,10 +130,12 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
                 { title: "📜 Quy định tiếng ồn", payload: "Nội quy nhà" },
                 { title: "📞 Báo Quản lý ngay", payload: "Liên hệ" },
             ],
+            preferredTime,
+            phone,
         };
     }
 
-    // 6. Phân loại Báo hỏng thiết bị (REPORT_ISSUE)
+    // 8. Phân loại Báo hỏng thiết bị (REPORT_ISSUE)
     const isIssue = /\b(hu|hong|hu hong|bi hu|bi hong|bao hu|su co|bao hong|khong lanh|bi ket|ro ri|chay nuoc|khong chay|mat dien|mat nuoc|goi tho|hong do|khong sang|tat|chay|khong len|hu den|hong den)\b/i.test(normText);
 
     if (isIssue || deviceType) {
@@ -122,10 +149,12 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
                 { title: "🔧 Quy trình bảo trì", payload: "Bảo trì" },
                 { title: "📞 Gọi thợ hỗ trợ", payload: "Liên hệ" },
             ],
+            preferredTime,
+            phone,
         };
     }
 
-    // 7. Phân loại Chi phí / Hóa đơn (BILLING)
+    // 9. Phân loại Chi phí / Hóa đơn (BILLING)
     const isBilling = /\b(tien dien|tien nuoc|phi dich vu|hoa don|tien nha|gia phong|chi phi)\b/i.test(normText);
 
     if (isBilling) {
@@ -139,10 +168,12 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
                 { title: "💰 Bảng phí dịch vụ", payload: "Chi phí" },
                 { title: "📞 Nhờ hỗ trợ thu phí", payload: "Liên hệ" },
             ],
+            preferredTime,
+            phone,
         };
     }
 
-    // 8. Mặc định: Thông tin chung (GENERAL_FAQ)
+    // 10. Mặc định: Thông tin chung (GENERAL_FAQ)
     return {
         intent: "GENERAL_FAQ",
         roomNumber,
@@ -150,6 +181,8 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         urgencyLevel: "LOW",
         summary: `Hỏi đáp thông tin chung: "${text}"`,
         recommendedButtons: DEFAULT_BUTTONS,
+        preferredTime,
+        phone,
     };
 }
 

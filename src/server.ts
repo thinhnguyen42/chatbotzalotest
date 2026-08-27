@@ -84,7 +84,7 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     return;
                 }
 
-                const { replyText, recommendedButtons, extractedIntent, createdTicket } = await generateReplyWithButtons(userText, userId);
+                const { replyText, recommendedButtons, extractedIntent, createdTicket, adminNotificationMsg } = await generateReplyWithButtons(userText, userId);
                 await sendQuickReplies(userId, replyText, recommendedButtons);
 
                 // Nếu khách hỏi về Nội quy -> Tự động upload & gửi kèm hình ảnh noiQuy.jpg
@@ -94,11 +94,10 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     await sendHouseRulesImage(userId);
                 }
 
-                // Gửi thông báo ngầm cho Admin nếu có Ticket vừa được tạo thành công
-                if (createdTicket) {
-                    const adminTicketMsg = formatAdminTicketMessage(createdTicket);
-                    console.log(`[server] Gửi TICKET #${createdTicket.ticketCode} ngầm cho Admin:`, adminTicketMsg);
-                    await notifyAdmin(adminTicketMsg);
+                // Gửi thông báo ngầm cho Admin nếu có yêu cầu trực tiếp hoặc Ticket vừa tạo
+                if (adminNotificationMsg) {
+                    console.log(`[server] Gửi thông báo ngầm cho Admin về yêu cầu của user ${userId}`);
+                    notifyAdmin(adminNotificationMsg).catch((err) => console.error("[server] Lỗi gửi admin notification:", err.message));
                 }
             }
         }
