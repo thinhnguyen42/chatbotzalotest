@@ -40,13 +40,14 @@ export function extractPhoneNumber(text: string): string | null {
     if (!text) return null;
 
     // Ưu tiên khớp dạng có nhãn: SĐT, SDT, phone, dt...
-    const keywordMatch = text.match(/(?:sđt|sdt|dt|phone|dienthoai|so dien thoai)\s*:?\s*(\+?84|0)?([35789]\d{8})\b/i);
+    const keywordMatch = text.match(/(?:sđt|sdt|dt|phone|dienthoai|so dien thoai)\s*:?\s*(\+?84|0)?([1-9]\d{7,10})\b/i);
     if (keywordMatch) {
-        return `0${keywordMatch[2]}`;
+        const raw = keywordMatch[2];
+        return raw.startsWith("0") ? raw : `0${raw}`;
     }
 
     // Khớp dạng SĐT đứng riêng lẻ hoặc trong câu
-    const standardMatch = text.match(/(?:\+?84|0)([35789]\d{8})\b/);
+    const standardMatch = text.match(/(?:\+?84|0)([35789]\d{8,9})\b/);
     if (standardMatch) {
         return `0${standardMatch[1]}`;
     }

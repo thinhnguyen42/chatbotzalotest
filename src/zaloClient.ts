@@ -511,3 +511,38 @@ export async function setUserTagInZalo(userId: string, tagName: string): Promise
 }
 
 export const syncUserTagToZaloOA = setUserTagInZalo;
+
+/**
+ * Gỡ nhãn người dùng khỏi Zalo OA.
+ * Endpoint: POST https://openapi.zalo.me/v2.0/oa/tag/rmfollowerfromtag
+ */
+export async function removeUserTagInZalo(userId: string, tagName: string): Promise<boolean> {
+    try {
+        const token = await ensureValidToken();
+        const res = await axios.post(
+            "https://openapi.zalo.me/v2.0/oa/tag/rmfollowerfromtag",
+            {
+                user_id: userId,
+                tag_name: tagName,
+            },
+            {
+                headers: {
+                    access_token: token,
+                    "Content-Type": "application/json",
+                },
+                timeout: 5000,
+            }
+        );
+
+        if (res.data?.error === 0) {
+            console.log(`[zaloClient] Đã gỡ tag "${tagName}" khỏi user ${userId} thành công.`);
+            return true;
+        }
+
+        console.warn(`[zaloClient] Phản hồi gỡ tag từ Zalo OA cho user ${userId}:`, res.data);
+        return false;
+    } catch (err: any) {
+        console.warn(`[zaloClient] Lỗi khi gỡ tag Zalo OA cho user ${userId}:`, err.message);
+        return false;
+    }
+}
