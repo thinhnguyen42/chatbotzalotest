@@ -7,6 +7,7 @@ import { verifyZaloSignature } from "./verifyZaloSignature";
 import { checkSpamGuard } from "./spamGuard";
 import { isHumanHandoverActive, setHumanHandoverMode, clearHandoverMode, isBotSentMsgId } from "./humanHandover";
 import { createTicket, formatUserTicketMessage, formatAdminTicketMessage } from "./ticket/ticketService";
+import { startLinkApprovalPoller } from "./jobs/linkApprovalPoller";
 
 const app = express();
 
@@ -289,4 +290,6 @@ app.get("/oa/callback", async (req: Request, res: Response) => {
 
 app.listen(PORT, () => {
     console.log(`Bot server đang chạy tại http://localhost:${PORT}`);
+    // Khởi động polling duyệt hồ sơ cư dân Lark Base (Task 3B)
+    startLinkApprovalPoller(30000);
 });

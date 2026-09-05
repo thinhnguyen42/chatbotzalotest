@@ -473,3 +473,41 @@ export async function sendHouseRulesImage(userId: string): Promise<void> {
         await sendImageMessage(userId, imageUrl);
     }
 }
+
+/**
+ * Gán tag người dùng trên Zalo OA.
+ * Endpoint: POST https://openapi.zalo.me/v2.0/oa/tag/tagandfollower
+ * RÀNG BUỘC: Non-blocking try/catch để không làm gián đoạn phản hồi của bot.
+ */
+export async function setUserTagInZalo(userId: string, tagName: string): Promise<boolean> {
+    try {
+        const token = await ensureValidToken();
+        const res = await axios.post(
+            "https://openapi.zalo.me/v2.0/oa/tag/tagandfollower",
+            {
+                user_id: userId,
+                tag_name: tagName,
+            },
+            {
+                headers: {
+                    access_token: token,
+                    "Content-Type": "application/json",
+                },
+                timeout: 5000,
+            }
+        );
+
+        if (res.data?.error === 0) {
+            console.log(`[zaloClient] Gán tag "${tagName}" cho user ${userId} thành công.`);
+            return true;
+        }
+
+        console.warn(`[zaloClient] Phản hồi gán tag từ Zalo OA cho user ${userId}:`, res.data);
+        return false;
+    } catch (err: any) {
+        console.warn(`[zaloClient] Lỗi khi gán tag Zalo OA cho user ${userId}:`, err.message);
+        return false;
+    }
+}
+
+export const syncUserTagToZaloOA = setUserTagInZalo;
