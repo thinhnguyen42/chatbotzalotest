@@ -111,6 +111,17 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
             }
         }
 
+        // Sự kiện gán nhãn người dùng / tạo nhãn qua Open API (add_user_to_tag)
+        if (event.event_name === "add_user_to_tag") {
+            const tagName = event.tag?.name;
+            const taggedUsers = event.tag?.user_ids;
+            if (taggedUsers && taggedUsers.length > 0) {
+                console.log(`[webhook] Xác nhận từ Zalo OA: Đã gán nhãn "${tagName}" cho user(s): ${taggedUsers.join(", ")}`);
+            } else {
+                console.log(`[webhook] Xác nhận từ Zalo OA: Đã tạo nhãn mới "${tagName}" trên OA.`);
+            }
+        }
+
         // Bạn có thể xử lý thêm các event_name khác ở đây:
         // user_send_image, user_send_sticker, user_click_button, ...
     } catch (err) {
