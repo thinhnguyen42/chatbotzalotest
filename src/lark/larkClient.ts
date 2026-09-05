@@ -98,7 +98,7 @@ export async function getContractByPhone(phone: string): Promise<ContractRecord 
 
         for (const item of items) {
             const rawPhone = String(item.fields?.["Số điện thoại"] || "").replace(/\D/g, "");
-            if (rawPhone && rawPhone === cleanPhone) {
+            if (rawPhone && (rawPhone === cleanPhone || (rawPhone.length >= 9 && cleanPhone.length >= 9 && rawPhone.slice(-9) === cleanPhone.slice(-9)))) {
                 matchedItem = item;
                 break;
             }
@@ -293,6 +293,92 @@ export async function markLinkRequestAsProcessed(recordId: string): Promise<bool
         return res.data?.code === 0;
     } catch (err: any) {
         console.error("[larkClient] Lỗi markLinkRequestAsProcessed:", err.response?.data || err.message);
+        return false;
+    }
+}
+
+/**
+ * Tra cứu thông tin liên kết đang hoạt động theo số phòng từ BOT_LINK_REQUESTS.
+ */
+export async function findActiveLinkByRoom(roomNumber: string): Promise<{
+    linkRecordId: string;
+    zaloUserId: string;
+    phone: string;
+    tagCode: string;
+    roomNumber: string;
+    tenantName: string;
+} | null> {
+    const cleanRoom = roomNumber.replace(/\D/g, "");
+    if (!cleanRoom) return null;
+
+    const token = await getTenantAccessToken();
+
+    try {
+        const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
+        const res = await axios.get(url, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: { page_size: 100 },
+            timeout: 10000,
+        });
+
+        const items = res.data?.data?.items || [];
+        for (const item of items) {
+            const fields = item.fields || {};
+            const status = String(fields["TRẠNG THÁI"] || "").trim();
+            const phone = String(fields["SDT"] || "").replace(/\D/g, "");
+            const zaloUserId = String(fields["ZALO USER ID"] || "").trim();
+
+            if (status === "Đã duyệt" && phone && zaloUserId) {
+                const contract = await getContractByPhone(phone);
+                if (contract && (contract.roomNumber === cleanRoom || contract.tagCode.endsWith(`-${cleanRoom}`))) {
+                    return {
+                        linkRecordId: item.record_id,
+                        zaloUserId,
+                        phone,
+                        tagCode: contract.tagCode,
+                        roomNumber: contract.roomNumber,
+                        tenantName: contract.tenantName,
+                    };
+                }
+            }
+        }
+
+        return null;
+    } catch (err: any) {
+        console.error("[larkClient] Lỗi trong findActiveLinkByRoom:", err.response?.data || err.message);
+        return null;
+    }
+}
+
+/**
+ * Hủy liên kết của cư dân trong bảng BOT_LINK_REQUESTS (chuyển TRẠNG THÁI = "Từ chối").
+ * RÀNG BUỘC: CHỈ ghi/sửa trong bảng BOT_LINK_REQUESTS, không đụng vào bảng khác.
+ */
+export async function unbindLinkRequest(linkRecordId: string): Promise<boolean> {
+    const token = await getTenantAccessToken();
+
+    try {
+        const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records/${linkRecordId}`;
+        const res = await axios.put(
+            url,
+            {
+                fields: {
+                    "TRẠNG THÁI": "Từ chối",
+                    "Đã xử lý bởi bot": true,
+                },
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                timeout: 10000,
+            }
+        );
+
+        return res.data?.code === 0;
+    } catch (err: any) {
+        console.error("[larkClient] Lỗi unbindLinkRequest:", err.response?.data || err.message);
         return false;
     }
 }

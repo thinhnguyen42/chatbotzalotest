@@ -78,22 +78,22 @@ export function updateSessionContext(
     }
 ): void {
     const session = getSession(userId);
-    if (context.roomNumber) {
+    if ("roomNumber" in context) {
         session.roomNumber = context.roomNumber;
     }
-    if (context.userName) {
+    if ("userName" in context) {
         session.userName = context.userName;
     }
-    if (context.phone) {
+    if ("phone" in context) {
         session.phone = context.phone;
     }
-    if (context.role) {
+    if ("role" in context) {
         session.role = context.role;
     }
-    if (context.tagCode) {
+    if ("tagCode" in context) {
         session.tagCode = context.tagCode;
     }
-    if (context.address) {
+    if ("address" in context) {
         session.address = context.address;
     }
     session.updatedAt = Date.now();

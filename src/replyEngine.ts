@@ -7,6 +7,7 @@ import { INCIDENT_FORM_TEMPLATE_REPLY, createTicket, formatUserTicketMessage, fo
 import { ADMIN_PHONE_NUMBER } from "./config/adminConfig";
 import { notifyAdmin } from "./zaloClient";
 import { resolveUserRole, handlePhoneClaim } from "./user/userRoleService";
+import { handleAdminRemoveTag } from "./user/adminTagService";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
@@ -68,6 +69,22 @@ export async function generateReplyWithButtons(userText: string, userId: string 
 
     // 0.1 Phân giải vai trò người dùng (ADMIN, PRIMARY_LEASEHOLDER, CO_RESIDENT, UNTAGGED_GUEST)
     const userRoleCtx = await resolveUserRole(userId);
+
+    // 0.1.1 Lệnh quản trị viên: Gỡ Tag phòng (ví dụ: "Toi muon go tag phong 101 nay")
+    if (userRoleCtx.role === "ADMIN") {
+        const adminRemoveRes = await handleAdminRemoveTag(userText, userId);
+        if (adminRemoveRes.handled && adminRemoveRes.replyText) {
+            addMessageToSession(userId, "assistant", adminRemoveRes.replyText);
+            return {
+                replyText: adminRemoveRes.replyText,
+                recommendedButtons: [
+                    { title: "🏠 Xem phòng trống", payload: "phòng trống" },
+                ],
+                extractedIntent: intentResult,
+            };
+        }
+    }
+
     if (userRoleCtx.role === "PRIMARY_LEASEHOLDER" || userRoleCtx.role === "CO_RESIDENT") {
         if (userRoleCtx.roomNumber && (!session.roomNumber || session.roomNumber === "Chưa xác định")) {
             updateSessionContext(userId, {
