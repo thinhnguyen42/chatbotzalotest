@@ -90,7 +90,8 @@ export function formatUserTicketMessage(ticket: Ticket): string {
     const timeStr = ticket.preferredTime || "Trong giờ hành chính";
     const phoneStr = ticket.phone || "Chưa cung cấp";
 
-    return `Dạ, Quản gia AI đã ghi nhận yêu cầu báo sự cố của bạn!
+    const greetingRoom = roomStr !== "Chưa xác định" ? ` phòng ${roomStr}` : "";
+    return `Dạ, Quản gia AI đã ghi nhận yêu cầu báo sự cố${greetingRoom} của bạn!
 
 🎫 Mã phiếu hỗ trợ: #${ticket.ticketCode}
 • Số phòng: ${roomStr}
