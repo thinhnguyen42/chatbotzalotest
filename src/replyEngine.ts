@@ -6,6 +6,7 @@ import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./inte
 import { INCIDENT_FORM_TEMPLATE_REPLY, createTicket, formatUserTicketMessage, formatAdminTicketMessage, Ticket } from "./ticket/ticketService";
 import { ADMIN_PHONE_NUMBER } from "./config/adminConfig";
 import { notifyAdmin } from "./zaloClient";
+import { resolveUserRole, handlePhoneClaim } from "./user/userRoleService";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
@@ -63,6 +64,34 @@ export async function generateReplyWithButtons(userText: string, userId: string 
     const intentResult = extractIntentAndEntities(userText, session.roomNumber);
     if (intentResult.phone) {
         updateSessionContext(userId, { phone: intentResult.phone });
+    }
+
+    // 0.1 Phân giải vai trò người dùng (ADMIN, PRIMARY_LEASEHOLDER, CO_RESIDENT, UNTAGGED_GUEST)
+    const userRoleCtx = await resolveUserRole(userId);
+    if (userRoleCtx.role === "PRIMARY_LEASEHOLDER" || userRoleCtx.role === "CO_RESIDENT") {
+        if (userRoleCtx.roomNumber && (!session.roomNumber || session.roomNumber === "Chưa xác định")) {
+            updateSessionContext(userId, {
+                roomNumber: userRoleCtx.roomNumber,
+                userName: userRoleCtx.tenantName,
+                role: userRoleCtx.role,
+                tagCode: userRoleCtx.tagCode,
+                address: userRoleCtx.address,
+            });
+        }
+    } else if (userRoleCtx.role === "UNTAGGED_GUEST") {
+        // Xử lý luồng claim SĐT người thuê — Zero Information Disclosure (Task 2)
+        const claimResult = await handlePhoneClaim(userText, userId, session.userName);
+        if (claimResult.handled && claimResult.replyText) {
+            addMessageToSession(userId, "assistant", claimResult.replyText);
+            return {
+                replyText: claimResult.replyText,
+                recommendedButtons: [
+                    { title: "📞 Hotline Ban Quản Lý", payload: "Liên hệ" },
+                    { title: "🏠 Xem phòng trống", payload: "phòng trống" },
+                ],
+                extractedIntent: intentResult,
+            };
+        }
     }
 
     // Pre-filter: Direct Admin Forwarding for exact "admin", "lien he", "liên hệ" messages

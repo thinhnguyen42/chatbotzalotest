@@ -9,6 +9,9 @@ export interface UserSession {
     roomNumber?: string;
     userName?: string;
     phone?: string;
+    role?: "ADMIN" | "PRIMARY_LEASEHOLDER" | "CO_RESIDENT" | "UNTAGGED_GUEST";
+    tagCode?: string;
+    address?: string;
     history: Message[];
     updatedAt: number;
 }
@@ -63,7 +66,17 @@ export function addMessageToSession(userId: string, role: "user" | "assistant", 
 /**
  * Cập nhật thông tin ngữ cảnh khách hàng (ví dụ: số phòng, tên, số điện thoại).
  */
-export function updateSessionContext(userId: string, context: { roomNumber?: string; userName?: string; phone?: string }): void {
+export function updateSessionContext(
+    userId: string,
+    context: {
+        roomNumber?: string;
+        userName?: string;
+        phone?: string;
+        role?: "ADMIN" | "PRIMARY_LEASEHOLDER" | "CO_RESIDENT" | "UNTAGGED_GUEST";
+        tagCode?: string;
+        address?: string;
+    }
+): void {
     const session = getSession(userId);
     if (context.roomNumber) {
         session.roomNumber = context.roomNumber;
@@ -73,6 +86,15 @@ export function updateSessionContext(userId: string, context: { roomNumber?: str
     }
     if (context.phone) {
         session.phone = context.phone;
+    }
+    if (context.role) {
+        session.role = context.role;
+    }
+    if (context.tagCode) {
+        session.tagCode = context.tagCode;
+    }
+    if (context.address) {
+        session.address = context.address;
     }
     session.updatedAt = Date.now();
 }
