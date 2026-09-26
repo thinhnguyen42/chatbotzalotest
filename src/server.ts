@@ -8,6 +8,11 @@ import { checkSpamGuard } from "./spamGuard";
 import { isHumanHandoverActive, setHumanHandoverMode, clearHandoverMode, isBotSentMsgId } from "./humanHandover";
 import { createTicket, formatUserTicketMessage, formatAdminTicketMessage } from "./ticket/ticketService";
 import { startLinkApprovalPoller } from "./jobs/linkApprovalPoller";
+import { startIncidentNotifyPoller } from "./jobs/incidentNotifyPoller";
+import { getSession } from "./memory/sessionMemory";
+import { LARK_INCIDENT_FORM_URL } from "./lark/larkClient";
+import { startTTLockServiceIfNeeded } from "./ttlock/ttlockServiceManager";
+import { prewarmTTLock } from "./ttlock/ttlockClient";
 
 const app = express();
 
@@ -56,12 +61,18 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
             return;
         }
 
-        // Sự kiện người dùng gửi tin nhắn văn bản cho OA
-        if (event.event_name === "user_send_text") {
-            const userId = event.sender?.id;
-            const userText = event.message?.text;
+        // Sự kiện người dùng gửi tin nhắn văn bản hoặc bấm nút tương tác
+        if (event.event_name === "user_send_text" || event.event_name === "user_click_button" || event.event_name === "user_click_oa_menu") {
+            const userId = event.sender?.id || event.user_id_by_app;
+            const userText = event.message?.text || event.message?.payload || event.payload;
 
             if (userId && userText) {
+                // Bỏ qua gói tin test giả lập từ Zalo Developer Portal Webhook Tester (tránh lỗi user_id is invalid)
+                if (event.message?.msg_id === "This is message id" || userText === "This is testing message" || userId === "6053690184268964198") {
+                    console.log("[webhook] Nhận gói tin Webhook Test giả lập từ Zalo Developer Portal. Bỏ qua phản hồi để tránh lỗi user_id is invalid.");
+                    return;
+                }
+
                 // Lệnh Admin điều khiển trực tiếp trạng thái Bot (#pause / #resume)
                 if (/^(#pause|\/bot off)$/i.test(userText.trim())) {
                     setHumanHandoverMode(userId);
@@ -187,8 +198,8 @@ if (process.env.NODE_ENV !== "production") {
 
         console.log(`[test-reply] Testing: "${userText}"`);
         try {
-            const reply = await generateReply(userText);
-            res.json({ input: userText, reply });
+            const { replyText, recommendedButtons } = await generateReplyWithButtons(userText, testUserId);
+            res.json({ input: userText, reply: replyText, buttons: recommendedButtons });
         } catch (err: any) {
             res.status(500).json({ error: err.message });
         }
@@ -207,24 +218,27 @@ if (process.env.NODE_ENV !== "production") {
         body { background: #f0f2f5; margin: 0; display: flex; justify-content: center; height: 100vh; padding: 20px; }
         .chat-container { width: 100%; max-width: 600px; background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
         .header { background: #0068ff; color: white; padding: 15px 20px; font-weight: bold; font-size: 1.1rem; }
-        .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        .msg { max-width: 80%; padding: 12px 16px; border-radius: 16px; font-size: 0.95rem; white-space: pre-wrap; line-height: 1.4; }
+        .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .msg { max-width: 85%; padding: 12px 16px; border-radius: 16px; font-size: 0.95rem; white-space: pre-wrap; line-height: 1.4; }
         .msg.user { background: #e3f2fd; color: #0d47a1; align-self: flex-end; border-bottom-right-radius: 4px; }
         .msg.bot { background: #f1f0f0; color: #333; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .btn-container { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px 0; align-self: flex-start; }
+        .quick-btn { background: #e7f3ff; color: #0068ff; border: 1px solid #0068ff; padding: 7px 14px; border-radius: 18px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .quick-btn:hover { background: #0068ff; color: white; transform: translateY(-1px); }
         .input-area { padding: 15px; border-top: 1px solid #eee; display: flex; gap: 10px; }
         input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 20px; outline: none; font-size: 1rem; }
-        button { background: #0068ff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #0052cc; }
+        button[type="submit"] { background: #0068ff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        button[type="submit"]:hover { background: #0052cc; }
     </style>
 </head>
 <body>
     <div class="chat-container">
         <div class="header">Zalo OA Chatbot Tester (SunHavens)</div>
         <div class="messages" id="messages">
-            <div class="msg bot">Xin chào! Bạn gõ câu hỏi thử nghiệm vào ô bên dưới nhé (thử cả tiếng Việt có dấu hoặc không dấu).</div>
+            <div class="msg bot">Xin chào! Bạn có thể thử nghiệm nhắn "passcode" hoặc các câu hỏi khác để xem các nút bấm tương tác nhé.</div>
         </div>
         <form class="input-area" id="chatForm">
-            <input type="text" id="userInput" placeholder="Nhập câu hỏi (ví dụ: wifi mat khau, noi quy, dia chi...)" required autocomplete="off" />
+            <input type="text" id="userInput" placeholder="Nhập câu hỏi (ví dụ: passcode, wifi, nội quy...)" required autocomplete="off" />
             <button type="submit">Gửi</button>
         </form>
     </div>
@@ -253,6 +267,9 @@ if (process.env.NODE_ENV !== "production") {
                     return;
                 }
                 addMsg(data.reply || data.error, 'bot');
+                if (data.buttons && data.buttons.length > 0) {
+                    renderButtons(data.buttons);
+                }
             } catch (err) {
                 addMsg('Lỗi kết nối server: ' + err.message, 'bot');
             }
@@ -263,6 +280,24 @@ if (process.env.NODE_ENV !== "production") {
             div.className = 'msg ' + sender;
             div.textContent = text;
             messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function renderButtons(buttons) {
+            const container = document.createElement('div');
+            container.className = 'btn-container';
+            buttons.forEach(b => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'quick-btn';
+                btn.textContent = b.title;
+                btn.onclick = () => {
+                    input.value = b.payload || b.title;
+                    form.requestSubmit();
+                };
+                container.appendChild(btn);
+            });
+            messages.appendChild(container);
             messages.scrollTop = messages.scrollHeight;
         }
     </script>
@@ -303,4 +338,54 @@ app.listen(PORT, () => {
     console.log(`Bot server đang chạy tại http://localhost:${PORT}`);
     // Khởi động polling duyệt hồ sơ cư dân Lark Base (Task 3B)
     startLinkApprovalPoller(30000);
+    // Khởi động polling phát hiện sự cố mới từ Lark Base Form (mỗi 60 giây)
+    startIncidentNotifyPoller(60000);
+    // Tự động kiểm tra và khởi chạy dịch vụ TTLock FastAPI (cổng 8001) nếu chưa chạy
+    startTTLockServiceIfNeeded().catch((err) => {
+        console.warn("[server] Không thể khởi chạy TTLock service tự động:", err.message);
+    });
+    // Làm nóng trước (Pre-warm) kết nối Cloud TTLock để sẵn sàng cấp pass trong 300ms
+    prewarmTTLock().catch((err) => {
+        console.warn("[server] Không thể pre-warm TTLock:", err.message);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHORT URL: /bao-su-co — Redirect đến Lark Base Form với thông tin pre-fill
+// Khách Zalo click link này → server tra cứu phòng/tòa từ session → redirect
+// ─────────────────────────────────────────────────────────────────────────────
+app.get(["/bao-su-co", "/sc"], (req: Request, res: Response) => {
+    const uid = req.query.uid as string;
+
+    let formUrl = LARK_INCIDENT_FORM_URL;
+
+    if (uid) {
+        try {
+            // Lấy thông tin phòng/tòa từ session memory nếu có
+            const session = getSession(uid) as any;
+            const formParams = new URLSearchParams();
+
+            const roomNumber = session?.roomNumber && session.roomNumber !== "Chưa xác định" && session.roomNumber !== "000"
+                ? session.roomNumber
+                : "";
+            const toaNha = session?.tagCode
+                ? String(session.tagCode).split("-")[0]  // "38PBV-401" → "38PBV"
+                : "38PBV";
+
+            if (roomNumber) formParams.set("prefill_SoPhong", roomNumber);
+            if (toaNha) formParams.set("prefill_ToaNha", toaNha);
+            formParams.set("prefill_ZaloUserID", uid);
+
+            const queryString = formParams.toString();
+            formUrl = queryString
+                ? `${LARK_INCIDENT_FORM_URL}?${queryString}`
+                : LARK_INCIDENT_FORM_URL;
+
+            console.log(`[/bao-su-co] Redirect user ${uid} (phòng: ${roomNumber || "chưa rõ"}) đến form: ${formUrl}`);
+        } catch (err) {
+            console.error("[/bao-su-co] Lỗi khi tạo pre-fill URL:", err);
+        }
+    }
+
+    res.redirect(302, formUrl);
 });

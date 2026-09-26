@@ -14,30 +14,30 @@ export async function handleAdminRemoveTag(
     const norm = removeVietnameseDiacritics(userText.toLowerCase());
 
     // Nhận diện các dạng:
-    // - "go tag phong 101", "gỡ tag phòng 101", "xóa tag 101"
-    // - "toi muon go tag phong 101 nay"
+    // - "go tag phong 101", "gỡ tag phòng 101", "xóa tag 101", "gỡ tag 38PBV-601"
+    // - "toi muon go tag phong 101 nay", "gỡ tag 082205011416"
     // - "go phong 101 tag", "tag phong 101 nay go di"
     const match =
-        norm.match(/(?:go|xoa|huy)\s+tag\s+(?:phong|p\.?)?\s*(\d{3,4})/i) ||
-        norm.match(/(?:go|xoa|huy)\s+(?:phong|p\.?)?\s*(\d{3,4})\s+tag/i) ||
-        norm.match(/tag\s+(?:phong|p\.?)?\s*(\d{3,4})\s+(?:nay\s+)?(?:go|xoa|huy)/i);
+        norm.match(/(?:go|xoa|huy)\s+tag\s+(?:phong|p\.?)?\s*([a-z0-9-]+)/i) ||
+        norm.match(/(?:go|xoa|huy)\s+(?:phong|p\.?)?\s*([a-z0-9-]+)\s+tag/i) ||
+        norm.match(/tag\s+(?:phong|p\.?)?\s*([a-z0-9-]+)\s+(?:nay\s+)?(?:go|xoa|huy)/i);
 
     if (!match || !match[1]) {
         return { handled: false };
     }
 
-    const roomNumber = match[1];
+    const queryTarget = match[1];
 
     try {
-        const activeLink = await findActiveLinkByRoom(roomNumber);
+        const activeLink = await findActiveLinkByRoom(queryTarget);
         if (!activeLink) {
             return {
                 handled: true,
-                replyText: `⚠️ Không tìm thấy tài khoản cư dân nào đang được liên kết với Phòng ${roomNumber} trong hệ thống.`,
+                replyText: `⚠️ Không tìm thấy tài khoản cư dân nào đang được liên kết với "${queryTarget}" trong hệ thống.`,
             };
         }
 
-        const { linkRecordId, zaloUserId, phone, tagCode, tenantName } = activeLink;
+        const { linkRecordId, zaloUserId, phone, tagCode, tenantName, roomNumber } = activeLink;
 
         // 1. Gỡ nhãn trên Zalo OA (NON-BLOCKING)
         removeUserTagInZalo(zaloUserId, tagCode).catch((err) => {
@@ -65,13 +65,13 @@ export async function handleAdminRemoveTag(
 
         return {
             handled: true,
-            replyText: `✅ Đã gỡ thành công tag [${tagCode}] cho cư dân Phòng ${roomNumber} (Người thuê: ${tenantName}, SĐT: ${phone}, Zalo UID: ${zaloUserId}).`,
+            replyText: `✅ Đã gỡ thành công tag [${tagCode}] cho cư dân Phòng ${roomNumber} (Người thuê: ${tenantName}, CCCD/SĐT: ${phone}, Zalo UID: ${zaloUserId}).`,
         };
     } catch (err: any) {
         console.error("[adminTagService] Lỗi khi xử lý gỡ tag:", err.message);
         return {
             handled: true,
-            replyText: `❌ Đã xảy ra lỗi khi gỡ tag phòng ${roomNumber}: ${err.message}`,
+            replyText: `❌ Đã xảy ra lỗi khi gỡ tag: ${err.message}`,
         };
     }
 }

@@ -9,6 +9,8 @@ dist/
 .env.*.local
 zalo-tokens.json
 data/zalo-tokens.json
+data/ttlock-token.json
+data/active-links.json
 
 # logs
 *.log
@@ -21,6 +23,7 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+~$*
 
 # Python / PhoBERT
 __pycache__/
@@ -28,5 +31,25 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-
+# Superpowers & internal plans
 .superpowers/
+docs/superpowers/
+
+# Reports, documents & archives
+*.docx
+*.pdf
+*.zip
+*.rar
+report_assets/
+DO_AN_NGANH_CHATBOT_ZALOOA/
+PCCC_Final/
+IotHubTTlock-main.zip
+IotHubTTlock-main/
+
+# One-off test scripts & diagnostics
+scripts/test*
+scripts/debug*
+scripts/diagnose*
+scripts/inspect*
+scripts/dumpSchema.js
+scripts/lark_schema.json

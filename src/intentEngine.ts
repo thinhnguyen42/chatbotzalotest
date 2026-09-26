@@ -1,11 +1,15 @@
 import { removeVietnameseDiacritics, normalizeTelexTypos, splitUnspacedWords } from "./utils/textUtils";
 
-export type IntentType = "EMERGENCY" | "REPORT_ISSUE" | "NOISE_COMPLAINT" | "BILLING" | "ADMIN_REQUEST" | "GENERAL_FAQ";
+export type IntentType = "EMERGENCY" | "REPORT_ISSUE" | "NOISE_COMPLAINT" | "BILLING" | "ADMIN_REQUEST" | "GATE_ACCESS" | "GENERAL_FAQ";
 
 export interface QuickReplyButton {
     title: string;
     payload: string;
 }
+
+export type GateDoorType = "CUA_TO" | "CUA_NHO" | "GARA" | "ROOM" | "UNSPECIFIED";
+export type GateDirection = "IN" | "OUT" | "UNSPECIFIED";
+export type GateAccessTarget = "ROOM" | "GATE" | "SHIPPER";
 
 export interface IntentResult {
     intent: IntentType;
@@ -16,6 +20,9 @@ export interface IntentResult {
     recommendedButtons: QuickReplyButton[];
     preferredTime?: string;
     phone?: string;
+    gateTarget?: GateAccessTarget;
+    doorType?: GateDoorType;
+    direction?: GateDirection;
 }
 
 const DEFAULT_BUTTONS: QuickReplyButton[] = [
@@ -113,6 +120,104 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
             ],
             preferredTime,
             phone,
+        };
+    }
+
+    // 6.5. Phân loại Yêu cầu mở cổng / mở phòng / Shipper / Gara (GATE_ACCESS)
+    const isGateAccess =
+        /\b(mo cong|mo cua|quen the|quen the tu|vao nha|vao phong|lay passcode|lay ma cua|ma mo cua|passcode|password cong|mat khau cong|mat ma cong|cho nguoi than|nguoi nha vao|muon vao|ban vao choi|shipper|ship hang|giao hang|ship do|nhan hang|don hang|vao gara|mo gara|quen pass|cua to|cua nho|cua gara|cua phong|chieu vao|chieu ra|chon cua khac|cua khac|doi cua|chon cua|mo cua khac|mo them cua)\b/i.test(normText)
+        || /\b(mở cổng|mở cửa|quên thẻ|quên thẻ từ|vào nhà|vào phòng|lấy passcode|lấy mã cửa|mã mở cửa|passcode|cho người thân|người nhà vào|muốn vào|bạn vào chơi|shipper|ship hàng|giao hàng|ship đồ|nhận hàng|đơn hàng|vào gara|mở gara|quên pass|cửa to|cửa nhỏ|cửa gara|cửa phòng|chiều vào|chiều ra|chọn cửa khác|cửa khác|đổi cửa|chọn cửa|mở cửa khác|mở thêm cửa)\b/i.test(text);
+
+    if (isGateAccess) {
+        let doorType: GateDoorType = "UNSPECIFIED";
+        let direction: GateDirection = "UNSPECIFIED";
+
+        // 1. Phân loại Cửa / Cổng:
+        const isCuaTo = /\b(cua to|cong to|cong lon|cua lon|mo cua to|mo cong lon)\b/i.test(normText)
+            || /\b(cửa to|cổng to|cổng lớn|cửa lớn|mở cửa to|mở cổng lớn)\b/i.test(text);
+
+        const isCuaNho = /\b(cua nho|cong nho|cua phu|mo cua nho|mo cong nho|shipper|ship hang|giao hang|ship do|nhan hang|don hang)\b/i.test(normText)
+            || /\b(cửa nhỏ|cổng nhỏ|cửa phụ|mở cửa nhỏ|mở cổng nhỏ|shipper|ship hàng|giao hàng|ship đồ|nhận hàng|đơn hàng)\b/i.test(text);
+
+        const isGara = /\b(gara|ham xe|ham gara|cua gara|mo gara|gui xe|cat xe)\b/i.test(normText)
+            || /\b(gara|hầm xe|hầm gara|cửa gara|mở gara|gửi xe|cất xe)\b/i.test(text);
+
+        const isRoom = /\b(cua phong|phong rieng|vao phong|mo phong|pass phong|ma phong)\b/i.test(normText)
+            || /^(phong|cua phong)$/i.test(normText)
+            || /\b(cửa phòng|phòng riêng|vào phòng|mở phòng|pass phòng|mã phòng)\b/i.test(text);
+
+        if (isCuaTo) doorType = "CUA_TO";
+        else if (isCuaNho) doorType = "CUA_NHO";
+        else if (isGara) doorType = "GARA";
+        else if (isRoom) doorType = "ROOM";
+        else doorType = "UNSPECIFIED";
+
+        // 2. Phân loại Chiều (Vào hay Ra):
+        const isIn = /\b(chieu vao|di vao|ben ngoai vao|vao)\b/i.test(normText)
+            || /\b(chiều vào|đi vào|bên ngoài vào|vào)\b/i.test(text);
+        const isOut = /\b(chieu ra|di ra|ra ngoai|ra)\b/i.test(normText)
+            || /\b(chiều ra|đi ra|ra ngoài|ra)\b/i.test(text);
+
+        // Chỉ xác định chiều khi người dùng nói rõ chiều vào / chiều ra
+        const hasExplicitIn = /\b(chieu vao|di vao|ben ngoai vao|in)\b/i.test(normText)
+            || /\b(chieu\s*vao)\b/i.test(normText)
+            || (doorType !== "UNSPECIFIED" && /\b(vao)\b/i.test(normText) && !/\b(vao phong|vao cong|vao gara|vao nha)\b/i.test(normText));
+        const hasExplicitOut = /\b(chieu ra|di ra|ra ngoai|out)\b/i.test(normText)
+            || /\b(chieu\s*ra)\b/i.test(normText)
+            || (doorType !== "UNSPECIFIED" && /\b(ra)\b/i.test(normText));
+
+        if (hasExplicitIn && !hasExplicitOut) {
+            direction = "IN";
+        } else if (hasExplicitOut && !hasExplicitIn) {
+            direction = "OUT";
+        } else {
+            direction = "UNSPECIFIED";
+        }
+
+        let gateTarget: GateAccessTarget = "GATE";
+        if (doorType === "ROOM") gateTarget = "ROOM";
+        else if (doorType === "CUA_NHO") gateTarget = "SHIPPER";
+
+        // Tạo danh sách button tương ứng theo trạng thái hội thoại:
+        let recommendedButtons: QuickReplyButton[];
+        if (doorType === "UNSPECIFIED") {
+            recommendedButtons = [
+                { title: "🚪 Cửa to", payload: "Cửa to" },
+                { title: "🚶 Cửa nhỏ", payload: "Cửa nhỏ" },
+                { title: "🚗 Cửa gara", payload: "Cửa gara" },
+                { title: "🏠 Cửa phòng", payload: "Cửa phòng" },
+            ];
+        } else if (direction === "UNSPECIFIED") {
+            const doorName = doorType === "CUA_TO" ? "Cửa to" : doorType === "CUA_NHO" ? "Cửa nhỏ" : doorType === "GARA" ? "Gara" : "Cửa phòng";
+            recommendedButtons = [
+                { title: `🟢 Chiều vào (${doorName})`, payload: `${doorName} chiều vào` },
+                { title: `🔴 Chiều ra (${doorName})`, payload: `${doorName} chiều ra` },
+                { title: "🔙 Chọn cửa khác", payload: "Lấy passcode" },
+            ];
+        } else {
+            recommendedButtons = [
+                { title: "🚪 Cửa to", payload: "Cửa to" },
+                { title: "🚶 Cửa nhỏ", payload: "Cửa nhỏ" },
+                { title: "🚗 Cửa gara", payload: "Cửa gara" },
+                { title: "🏠 Cửa phòng", payload: "Cửa phòng" },
+            ];
+        }
+
+        const doorLabel = doorType === "CUA_TO" ? "CỬA TO" : doorType === "CUA_NHO" ? "CỬA NHỎ" : doorType === "GARA" ? "GARA" : doorType === "ROOM" ? "PHÒNG" : "CHỌN CỬA";
+        const dirLabel = direction === "IN" ? "VÀO" : direction === "OUT" ? "RA" : "CHƯA CHỌN CHIỀU";
+
+        return {
+            intent: "GATE_ACCESS",
+            roomNumber,
+            deviceType: undefined,
+            urgencyLevel: "MEDIUM",
+            summary: `🔑 YÊU CẦU PASSCODE (${doorLabel} - ${dirLabel}) từ phòng ${roomNumber || "Chưa rõ"}: "${text}"`,
+            recommendedButtons,
+            preferredTime,
+            phone,
+            gateTarget,
+            doorType,
+            direction,
         };
     }
 

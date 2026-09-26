@@ -1,7 +1,11 @@
 import axios from "axios";
+import https from "https";
 import fs from "fs";
 import path from "path";
 import { markMsgIdAsBotSent } from "./humanHandover";
+
+// Kích hoạt HTTP/HTTPS Keep-Alive tái sử dụng kết nối socket, tiết kiệm 150-300ms TLS handshake mỗi tin nhắn
+axios.defaults.httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 30 });
 
 /**
  * Module này lo 2 việc:
@@ -125,45 +129,81 @@ export async function exchangeCodeAndSaveTokens(code: string): Promise<{ success
     return { success: false, error: JSON.stringify(lastErrorData) };
 }
 
+let refreshPromise: Promise<void> | null = null;
+
 async function refreshAccessToken(): Promise<void> {
-    try {
-        const res = await axios.post(
-            "https://oauth.zaloapp.com/v4/oa/access_token",
-            new URLSearchParams({
-                app_id: APP_ID,
-                grant_type: "refresh_token",
-                refresh_token: tokenState.refreshToken,
-            }),
-            {
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    secret_key: APP_SECRET,
-                },
-            }
-        );
-
-        const data = res.data;
-        if (!data.access_token) {
-            console.error("[zaloClient] Không refresh được token Zalo:", data);
-            throw new Error("Không refresh được token: " + JSON.stringify(data));
-        }
-
-        tokenState = {
-            accessToken: data.access_token,
-            refreshToken: data.refresh_token || tokenState.refreshToken,
-            expiresAt: Date.now() + 25 * 60 * 60 * 1000 - 5 * 60 * 1000,
-        };
-
-        saveTokenState(tokenState);
-        console.log("[zaloClient] Đã refresh access token mới thành công!");
-    } catch (err: any) {
-        console.error("[zaloClient] Lỗi khi refresh access token:", err.response?.data || err.message);
-        throw err;
+    if (refreshPromise) {
+        return refreshPromise;
     }
+
+    refreshPromise = (async () => {
+        try {
+            // Kiểm tra xem file token đã được tiến trình khác cập nhật gần đây chưa
+            if (fs.existsSync(TOKEN_FILE)) {
+                try {
+                    const saved = JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8"));
+                    if (saved.expiresAt > Date.now() + 60000 && saved.accessToken !== tokenState.accessToken) {
+                        tokenState = saved;
+                        console.log("[zaloClient] Sử dụng token vừa được cập nhật từ data/zalo-tokens.json");
+                        return;
+                    }
+                } catch {}
+            }
+
+            const res = await axios.post(
+                "https://oauth.zaloapp.com/v4/oa/access_token",
+                new URLSearchParams({
+                    app_id: APP_ID,
+                    grant_type: "refresh_token",
+                    refresh_token: tokenState.refreshToken,
+                }),
+                {
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        secret_key: APP_SECRET,
+                    },
+                }
+            );
+
+            const data = res.data;
+            if (!data.access_token) {
+                console.error("[zaloClient] Không refresh được token Zalo:", data);
+                throw new Error("Không refresh được token: " + JSON.stringify(data));
+            }
+
+            tokenState = {
+                accessToken: data.access_token,
+                refreshToken: data.refresh_token || tokenState.refreshToken,
+                expiresAt: Date.now() + 25 * 60 * 60 * 1000 - 5 * 60 * 1000,
+            };
+
+            saveTokenState(tokenState);
+
+            // Đồng bộ luôn sang file .env
+            const envPath = path.join(__dirname, "..", ".env");
+            if (fs.existsSync(envPath)) {
+                try {
+                    let envContent = fs.readFileSync(envPath, "utf8");
+                    envContent = envContent.replace(/^ZALO_ACCESS_TOKEN=.*/m, `ZALO_ACCESS_TOKEN=${tokenState.accessToken}`);
+                    envContent = envContent.replace(/^ZALO_REFRESH_TOKEN=.*/m, `ZALO_REFRESH_TOKEN=${tokenState.refreshToken}`);
+                    fs.writeFileSync(envPath, envContent, "utf8");
+                } catch {}
+            }
+
+            console.log("[zaloClient] Đã refresh access token mới thành công!");
+        } catch (err: any) {
+            console.error("[zaloClient] Lỗi khi refresh access token:", err.response?.data || err.message);
+            throw err;
+        } finally {
+            refreshPromise = null;
+        }
+    })();
+
+    return refreshPromise;
 }
 
 async function ensureValidToken(): Promise<string> {
-    if (!tokenState.accessToken) {
+    if (!tokenState.accessToken || Date.now() >= tokenState.expiresAt) {
         await refreshAccessToken();
     }
     return tokenState.accessToken;
@@ -193,7 +233,7 @@ export async function sendTextMessage(userId: string, text: string): Promise<voi
             console.warn(`[zaloClient] Zalo API trả về lỗi (code ${res.data.error}): ${res.data.message}`, res.data);
 
             // Nếu lỗi liên quan đến token (code -216 hoặc message chứa token) -> thử refresh token và gửi lại 1 lần
-            if (res.data.error === -216 || res.data.error === -201 || (typeof res.data.message === "string" && res.data.message.toLowerCase().includes("token"))) {
+            if (res.data.error === -216 || (typeof res.data.message === "string" && res.data.message.toLowerCase().includes("token"))) {
                 try {
                     console.log("[zaloClient] Thử refresh token và gửi lại...");
                     await refreshAccessToken();
@@ -238,6 +278,12 @@ export async function sendQuickReplies(
     }
 
     let token = await ensureValidToken();
+    const formattedButtons = buttons.slice(0, 5).map((b) => ({
+        title: b.title.length > 100 ? b.title.substring(0, 100) : b.title,
+        type: "oa.query.show",
+        payload: b.payload || b.title,
+    }));
+
     const payload = {
         recipient: { user_id: userId },
         message: {
@@ -245,12 +291,7 @@ export async function sendQuickReplies(
             attachment: {
                 type: "template",
                 payload: {
-                    template_type: "quick_reply",
-                    elements: buttons.map((b) => ({
-                        content_type: "text",
-                        title: b.title,
-                        payload: b.payload,
-                    })),
+                    buttons: formattedButtons,
                 },
             },
         },
@@ -271,16 +312,15 @@ export async function sendQuickReplies(
         if (res.data && res.data.error === 0) {
             const msgId = res.data.data?.message_id;
             if (msgId) markMsgIdAsBotSent(msgId);
-            console.log(`[zaloClient] Đã gửi Quick Reply thành công tới user: ${userId}`);
+            console.log(`[zaloClient] Đã gửi Interactive Buttons thành công tới user: ${userId}`);
         } else {
-            console.warn(`[zaloClient] Quick Reply API trả về code ${res.data?.error}. Chuyển sang gửi tin nhắn thường kèm nút bấm text.`);
-            // Fallback gửi tin nhắn kèm menu chữ nếu Zalo Account chưa bật Quick Reply Template
+            console.warn(`[zaloClient] Buttons API trả về code ${res.data?.error}: ${res.data?.message}. Chuyển sang fallback text.`);
             const buttonTextList = buttons.map((b) => `👉 [${b.title}]`).join("\n");
             const fallbackText = `${text}\n\nGợi ý thao tác nhanh:\n${buttonTextList}`;
             await sendTextMessage(userId, fallbackText);
         }
     } catch (err: any) {
-        console.warn("[zaloClient] Lỗi gửi Quick Reply, dùng fallback sendTextMessage");
+        console.warn("[zaloClient] Lỗi gửi Interactive Buttons, dùng fallback sendTextMessage:", err.message);
         await sendTextMessage(userId, text);
     }
 }
@@ -481,8 +521,8 @@ export async function sendHouseRulesImage(userId: string): Promise<void> {
  */
 export async function setUserTagInZalo(userId: string, tagName: string): Promise<boolean> {
     try {
-        const token = await ensureValidToken();
-        const res = await axios.post(
+        let token = await ensureValidToken();
+        let res = await axios.post(
             "https://openapi.zalo.me/v2.0/oa/tag/tagfollower",
             {
                 user_id: userId,
@@ -496,6 +536,26 @@ export async function setUserTagInZalo(userId: string, tagName: string): Promise
                 timeout: 5000,
             }
         );
+
+        if (res.data?.error === -216 || (typeof res.data?.message === "string" && res.data.message.toLowerCase().includes("token"))) {
+            console.log("[zaloClient] Token hết hạn khi gán tag, thử refresh và gửi lại...");
+            await refreshAccessToken();
+            token = tokenState.accessToken;
+            res = await axios.post(
+                "https://openapi.zalo.me/v2.0/oa/tag/tagfollower",
+                {
+                    user_id: userId,
+                    tag_name: tagName,
+                },
+                {
+                    headers: {
+                        access_token: token,
+                        "Content-Type": "application/json",
+                    },
+                    timeout: 5000,
+                }
+            );
+        }
 
         if (res.data?.error === 0) {
             console.log(`[zaloClient] Gán tag "${tagName}" cho user ${userId} thành công.`);
@@ -518,8 +578,8 @@ export const syncUserTagToZaloOA = setUserTagInZalo;
  */
 export async function removeUserTagInZalo(userId: string, tagName: string): Promise<boolean> {
     try {
-        const token = await ensureValidToken();
-        const res = await axios.post(
+        let token = await ensureValidToken();
+        let res = await axios.post(
             "https://openapi.zalo.me/v2.0/oa/tag/rmfollowerfromtag",
             {
                 user_id: userId,
@@ -533,6 +593,26 @@ export async function removeUserTagInZalo(userId: string, tagName: string): Prom
                 timeout: 5000,
             }
         );
+
+        if (res.data?.error === -216 || (typeof res.data?.message === "string" && res.data.message.toLowerCase().includes("token"))) {
+            console.log("[zaloClient] Token hết hạn khi gỡ tag, thử refresh và gửi lại...");
+            await refreshAccessToken();
+            token = tokenState.accessToken;
+            res = await axios.post(
+                "https://openapi.zalo.me/v2.0/oa/tag/rmfollowerfromtag",
+                {
+                    user_id: userId,
+                    tag_name: tagName,
+                },
+                {
+                    headers: {
+                        access_token: token,
+                        "Content-Type": "application/json",
+                    },
+                    timeout: 5000,
+                }
+            );
+        }
 
         if (res.data?.error === 0) {
             console.log(`[zaloClient] Đã gỡ tag "${tagName}" khỏi user ${userId} thành công.`);

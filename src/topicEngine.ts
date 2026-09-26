@@ -94,25 +94,51 @@ function fuzzyMatchKeywords(normalizedInput: string, keywords: string[]): boolea
 
         const kwWords = normKw.split(/\s+/).filter((w) => w.length >= 1);
 
-        // 2. Single word fuzzy check (exact for <= 4 chars unless in typo_variations, distance 1 for longer words)
+        // 2. Single word fuzzy check (exact for words <= 5 chars, distance 1 only for longer words >= 6 chars)
         if (kwWords.length === 1) {
             const targetWord = kwWords[0];
-            const maxDist = targetWord.length <= 4 ? 0 : 1;
-
-            for (const userWord of inputWords) {
-                if (Math.abs(userWord.length - targetWord.length) <= maxDist) {
-                    if (levenshteinDistance(userWord, targetWord) <= maxDist) {
-                        return true;
+            if (targetWord.length >= 6) {
+                for (const userWord of inputWords) {
+                    if (Math.abs(userWord.length - targetWord.length) <= 1) {
+                        if (levenshteinDistance(userWord, targetWord) <= 1) {
+                            return true;
+                        }
                     }
                 }
             }
         } else if (kwWords.length > 1 && inputWords.length >= kwWords.length) {
-            // 3. Phrase sliding window match
+            // 3. Phrase sliding window match - word-by-word validation
+            // Prevents false positives where multiple short words collectively match (e.g. "cay nho" vs "chay nha")
             const windowSize = kwWords.length;
             for (let i = 0; i <= inputWords.length - windowSize; i++) {
-                const phrase = inputWords.slice(i, i + windowSize).join(" ");
-                const maxDist = normKw.length <= 7 ? 1 : 2;
-                if (levenshteinDistance(phrase, normKw) <= maxDist) {
+                let mismatchedWords = 0;
+                let isMatch = true;
+
+                for (let j = 0; j < windowSize; j++) {
+                    const uWord = inputWords[i + j];
+                    const tWord = kwWords[j];
+
+                    if (uWord === tWord) {
+                        continue;
+                    }
+
+                    // For words <= 4 characters, require exact match (prevent "cay" matching "chay", "dien" matching "tien")
+                    if (tWord.length <= 4) {
+                        isMatch = false;
+                        break;
+                    }
+
+                    // For words >= 5 characters, allow at most 1 typo in the whole phrase
+                    const dist = levenshteinDistance(uWord, tWord);
+                    if (dist === 1 && mismatchedWords === 0) {
+                        mismatchedWords++;
+                    } else {
+                        isMatch = false;
+                        break;
+                    }
+                }
+
+                if (isMatch) {
                     return true;
                 }
             }

@@ -12,6 +12,10 @@ export interface UserSession {
     role?: "ADMIN" | "PRIMARY_LEASEHOLDER" | "CO_RESIDENT" | "UNTAGGED_GUEST";
     tagCode?: string;
     address?: string;
+    pendingGateAction?: {
+        step: "CHOOSE_DOOR" | "CHOOSE_DIRECTION";
+        doorType?: "CUA_TO" | "CUA_NHO" | "GARA" | "ROOM";
+    };
     history: Message[];
     updatedAt: number;
 }
