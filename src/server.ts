@@ -364,7 +364,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Endpoint hỗ trợ OAuth Authorize trực tiếp trên Production Webserver
-app.get("/oa/callback", async (req: Request, res: Response) => {
+app.get(["/oa/callback", "/callback"], async (req: Request, res: Response) => {
     const code = req.query.code as string;
     if (!code) {
         res.status(400).send("Thiếu tham số ?code= từ Zalo redirect.");
