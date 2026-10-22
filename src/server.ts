@@ -1,5 +1,6 @@
 import "dotenv/config";
 import path from "path";
+import fs from "fs";
 import express, { Request, Response } from "express";
 import { sendTextMessage, sendQuickReplies, notifyAdmin, sendImageMessage, sendHouseRulesImage, exchangeCodeAndSaveTokens } from "./zaloClient";
 import { generateReply, generateReplyWithButtons } from "./replyEngine";
