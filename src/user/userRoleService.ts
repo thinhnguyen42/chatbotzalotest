@@ -94,13 +94,25 @@ export async function resolveUserRole(zaloUserId: string): Promise<UserRoleConte
     }
 
     // 1. Kiểm tra Admin qua allowlist
-    const adminIds = (process.env.ADMIN_ZALO_USER_IDS || ADMIN_ZALO_USER_ID || "")
-        .split(",")
+    const adminIds = [
+        "6962737755353011552",
+        ...(process.env.ADMIN_ZALO_USER_IDS || "").split(","),
+        ...(process.env.ZALO_ADMIN_USER_ID || "").split(","),
+        ...(process.env.PASSCODE_WHITELIST_USER_IDS || "").split(","),
+        ADMIN_ZALO_USER_ID,
+    ]
         .map((s) => s.trim())
         .filter(Boolean);
 
     if (adminIds.includes(zaloUserId)) {
-        return { zaloUserId, role: "ADMIN" };
+        return {
+            zaloUserId,
+            role: "ADMIN",
+            tenantName: "Ban Quản Lý / Admin",
+            roomNumber: "BQL",
+            tagCode: "38PBV-ADMIN",
+            address: "38 Phan Bá Vành, P. Cát Lái, TP Hồ Chí Minh",
+        };
     }
 
     // 2. Kiểm tra cache trong bộ nhớ

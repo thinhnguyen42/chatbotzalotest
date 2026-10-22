@@ -7,10 +7,10 @@ import { verifyZaloSignature } from "./verifyZaloSignature";
 import { checkSpamGuard } from "./spamGuard";
 import { isHumanHandoverActive, setHumanHandoverMode, clearHandoverMode, isBotSentMsgId } from "./humanHandover";
 import { createTicket, formatUserTicketMessage, formatAdminTicketMessage } from "./ticket/ticketService";
-import { startLinkApprovalPoller } from "./jobs/linkApprovalPoller";
-import { startIncidentNotifyPoller } from "./jobs/incidentNotifyPoller";
+import { startLinkApprovalPoller, pollApprovedLinkRequests } from "./jobs/linkApprovalPoller";
+import { startIncidentNotifyPoller, pollNewIncidents } from "./jobs/incidentNotifyPoller";
 import { getSession } from "./memory/sessionMemory";
-import { LARK_INCIDENT_FORM_URL } from "./lark/larkClient";
+import { LARK_INCIDENT_FORM_URL, invalidateTenantCache } from "./lark/larkClient";
 import { startTTLockServiceIfNeeded } from "./ttlock/ttlockServiceManager";
 import { prewarmTTLock } from "./ttlock/ttlockClient";
 
@@ -334,12 +334,35 @@ app.get("/oa/callback", async (req: Request, res: Response) => {
     }
 });
 
+// Webhook trigger từ Lark Base Automation (khi Admin bấm duyệt hoặc cư dân gửi báo sự cố mới)
+// URL: POST /webhook/lark-trigger hoặc GET /webhook/lark-sync
+app.all(["/webhook/lark-trigger", "/webhook/lark-sync"], async (_req: Request, res: Response) => {
+    res.json({ status: "ok", message: "Lark sync triggered successfully" });
+    try {
+        console.log("[webhook] 🔔 Nhận tín hiệu trigger từ Lark Base! Đang đồng bộ tức thì...");
+        invalidateTenantCache();
+        const [linksProcessed, incidentsNotified] = await Promise.all([
+            pollApprovedLinkRequests(),
+            pollNewIncidents(),
+        ]);
+        console.log(`[webhook] ✅ Đồng bộ tức thì Lark Base xong: ${linksProcessed} liên kết, ${incidentsNotified} sự cố.`);
+    } catch (err: any) {
+        console.error("[webhook] ❌ Lỗi khi đồng bộ qua Lark trigger webhook:", err.message);
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Bot server đang chạy tại http://localhost:${PORT}`);
     // Khởi động polling duyệt hồ sơ cư dân Lark Base (Task 3B)
-    startLinkApprovalPoller(30000);
-    // Khởi động polling phát hiện sự cố mới từ Lark Base Form (mỗi 60 giây)
-    startIncidentNotifyPoller(60000);
+    if (process.env.ENABLE_LARK_SYNC === "true") {
+        startLinkApprovalPoller();
+        startIncidentNotifyPoller();
+        console.log("[server] 🔄 Đã kích hoạt Poller đồng bộ Lark Base.");
+    } else {
+        console.log("[server] 📁 Chạy chế độ Offline / CSV (Lark Base Sync đang tắt để tiết kiệm API). Đặt ENABLE_LARK_SYNC=true trong .env nếu muốn bật lại.");
+    }
+
+
     // Tự động kiểm tra và khởi chạy dịch vụ TTLock FastAPI (cổng 8001) nếu chưa chạy
     startTTLockServiceIfNeeded().catch((err) => {
         console.warn("[server] Không thể khởi chạy TTLock service tự động:", err.message);

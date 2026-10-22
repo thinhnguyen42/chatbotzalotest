@@ -84,27 +84,84 @@ export async function getTenantAccessToken(): Promise<string> {
     }
 }
 
+// Memory cache cho Lark Base để tối ưu số lần gọi API cho nhà trọ ~16 phòng
+interface MemoryCache<T> {
+    data: T;
+    expiresAt: number;
+}
+
+let cachedTenants: MemoryCache<any[]> | null = null;
+const TENANT_CACHE_TTL_MS = 60 * 60 * 1000; // 60 phút cache danh sách cư dân
+
+let cachedLinkRequests: MemoryCache<any[]> | null = null;
+const LINK_REQUEST_CACHE_TTL_MS = 15 * 60 * 1000; // 15 phút cache danh sách yêu cầu liên kết
+
+/**
+ * Xóa cache bộ nhớ để ép buộc nạp mới từ Lark Base ở lần gọi tiếp theo
+ * Được gọi khi có Webhook trigger từ Lark Base hoặc khi thêm/sửa yêu cầu liên kết
+ */
+export function invalidateTenantCache(): void {
+    cachedTenants = null;
+    cachedLinkRequests = null;
+    console.log("[larkClient] 🔄 Đã làm mới cache Lark Base (Tenants & LinkRequests).");
+}
+
+/**
+ * Lấy danh sách cư dân từ cache bộ nhớ (nếu còn hạn) hoặc gọi API Lark Base nạp lại
+ */
+export async function getCachedTenantRecords(forceRefresh = false): Promise<any[]> {
+    if (!forceRefresh && cachedTenants && Date.now() < cachedTenants.expiresAt) {
+        return cachedTenants.data;
+    }
+    const token = await getTenantAccessToken();
+    const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_TENANTS_TABLE_ID}/records`;
+    const res = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { page_size: 100 },
+        timeout: 10000,
+    });
+    const items = res.data?.data?.items || [];
+    cachedTenants = {
+        data: items,
+        expiresAt: Date.now() + TENANT_CACHE_TTL_MS,
+    };
+    console.log(`[larkClient] 📦 Đã nạp và lưu cache ${items.length} cư dân từ bảng TENANTS (TTL: 60 phút).`);
+    return items;
+}
+
+/**
+ * Lấy danh sách yêu cầu liên kết từ cache bộ nhớ hoặc gọi API Lark Base nạp lại
+ */
+export async function getCachedLinkRequestRecords(forceRefresh = false): Promise<any[]> {
+    if (!forceRefresh && cachedLinkRequests && Date.now() < cachedLinkRequests.expiresAt) {
+        return cachedLinkRequests.data;
+    }
+    const token = await getTenantAccessToken();
+    const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
+    const res = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { page_size: 100 },
+        timeout: 10000,
+    });
+    const items = res.data?.data?.items || [];
+    cachedLinkRequests = {
+        data: items,
+        expiresAt: Date.now() + LINK_REQUEST_CACHE_TTL_MS,
+    };
+    return items;
+}
+
 /**
  * Tra cứu thông tin cư dân theo Số CCCD từ bảng TENANTS.
- * RÀNG BUỘC: Chỉ ĐỌC (GET), không ghi/sửa bảng TENANTS.
- * Đồng thời kiểm tra chéo bảng BOT_LINK_REQUESTS xem đã có Zalo UID nào được duyệt gắn vào chưa.
+ * Sử dụng bộ nhớ cache để giảm tối đa số lần gọi API Lark Base.
  */
 export async function getContractByCccd(cccd: string): Promise<ContractRecord | null> {
     const cleanCccd = cccd.replace(/\D/g, "");
     if (!cleanCccd) return null;
 
-    const token = await getTenantAccessToken();
-
     try {
-        // 1. Đọc danh sách records từ bảng TENANTS
-        const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_TENANTS_TABLE_ID}/records`;
-        const res = await axios.get(url, {
-            headers: { Authorization: `Bearer ${token}` },
-            params: { page_size: 100 },
-            timeout: 10000,
-        });
-
-        const items = res.data?.data?.items || [];
+        // 1. Đọc danh sách records từ cache bộ nhớ (0 API calls nếu đã nạp)
+        const items = await getCachedTenantRecords();
         let matchedItem: any = null;
 
         for (const item of items) {
@@ -153,17 +210,10 @@ export async function getContractByCccd(cccd: string): Promise<ContractRecord | 
         const address = "38 Phan Bá Vành, P. Cát Lái, TP Hồ Chí Minh";
         const tagCode = `${building}-${roomNumber}`;
 
-        // 2. KIỂM TRA CHÉO BOT_LINK_REQUESTS: đã có Zalo UID nào được duyệt gắn vào tenant này chưa?
+        // 2. KIỂM TRA CHÉO BOT_LINK_REQUESTS qua cache: đã có Zalo UID nào được duyệt gắn vào tenant này chưa?
         let existingZaloUserId: string | undefined = undefined;
         try {
-            const linkReqUrl = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
-            const linkRes = await axios.get(linkReqUrl, {
-                headers: { Authorization: `Bearer ${token}` },
-                params: { page_size: 100 },
-                timeout: 10000,
-            });
-
-            const linkItems = linkRes.data?.data?.items || [];
+            const linkItems = await getCachedLinkRequestRecords();
             for (const linkItem of linkItems) {
                 const linkFields = linkItem.fields || {};
                 const status = String(linkFields["TRẠNG THÁI"] || "");
@@ -202,27 +252,14 @@ export async function getContractByCccd(cccd: string): Promise<ContractRecord | 
 
 /**
  * Tra cứu thông tin hợp đồng / cư dân theo Số điện thoại hoặc CCCD từ bảng TENANTS.
+ * Tận dụng cache bộ nhớ để giảm tối đa số lần gọi API Lark Base.
  */
 export async function getContractByPhone(phoneOrCccd: string): Promise<ContractRecord | null> {
     const cleanId = phoneOrCccd.replace(/\D/g, "");
     if (!cleanId) return null;
 
-    // Nếu là 12 số (hoặc 9 số CMND), ưu tiên tìm theo CCCD trước
-    if (cleanId.length >= 9) {
-        const cccdContract = await getContractByCccd(cleanId);
-        if (cccdContract) return cccdContract;
-    }
-
-    const token = await getTenantAccessToken();
     try {
-        const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_TENANTS_TABLE_ID}/records`;
-        const res = await axios.get(url, {
-            headers: { Authorization: `Bearer ${token}` },
-            params: { page_size: 100 },
-            timeout: 10000,
-        });
-
-        const items = res.data?.data?.items || [];
+        const items = await getCachedTenantRecords();
         for (const item of items) {
             const rawPhone = String(item.fields?.["Số điện thoại"] || "").replace(/\D/g, "");
             const rawCccd = String(item.fields?.["Số CCCD"] || item.fields?.["CCCD"] || "").replace(/\D/g, "");
@@ -274,6 +311,7 @@ export async function createLinkRequest(
 
         if (res.data?.code === 0) {
             console.log(`[larkClient] Đã tạo yêu cầu liên kết cho CCCD ${cleanId} (Zalo UID: ${zaloUserId})`);
+            invalidateTenantCache();
             return true;
         }
 
@@ -412,7 +450,11 @@ export async function markLinkRequestAsProcessed(recordId: string): Promise<bool
             }
         );
 
-        return res.data?.code === 0;
+        if (res.data?.code === 0) {
+            invalidateTenantCache();
+            return true;
+        }
+        return false;
     } catch (err: any) {
         console.error("[larkClient] Lỗi markLinkRequestAsProcessed:", err.response?.data || err.message);
         return false;
@@ -550,7 +592,11 @@ export async function unbindLinkRequest(linkRecordId: string): Promise<boolean> 
             }
         );
 
-        return res.data?.code === 0;
+        if (res.data?.code === 0) {
+            invalidateTenantCache();
+            return true;
+        }
+        return false;
     } catch (err: any) {
         console.error("[larkClient] Lỗi unbindLinkRequest:", err.response?.data || err.message);
         return false;
@@ -644,7 +690,11 @@ export async function markIncidentNotified(recordId: string): Promise<boolean> {
             }
         );
 
-        return res.data?.code === 0;
+        if (res.data?.code === 0) {
+            invalidateTenantCache();
+            return true;
+        }
+        return false;
     } catch (err: any) {
         console.error("[larkClient] Lỗi markIncidentNotified:", err.response?.data || err.message);
         return false;

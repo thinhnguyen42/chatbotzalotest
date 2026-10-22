@@ -7,6 +7,7 @@ import { createTicket, formatAdminTicketMessage, Ticket } from "./ticket/ticketS
 import { ADMIN_PHONE_NUMBER } from "./config/adminConfig";
 import { notifyAdmin } from "./zaloClient";
 import { resolveUserRole, handlePhoneClaim, handleCccdClaim } from "./user/userRoleService";
+import { handleCsvTenantClaim } from "./user/tenantCsvService";
 import { handleAdminRemoveTag } from "./user/adminTagService";
 import { LARK_INCIDENT_FORM_URL, LARK_INCIDENT_SHORT_URL } from "./lark/larkClient";
 import { requestPasscode } from "./ttlock/ttlockClient";
@@ -154,6 +155,18 @@ export async function generateReplyWithButtons(userText: string, userId: string 
             });
         }
     } else if (userRoleCtx.role === "UNTAGGED_GUEST") {
+        // 1. Ưu tiên xác thực cư dân trực tiếp qua file CSV (Họ tên + CCCD) - Hoạt động độc lập không cần Lark Base
+        const csvClaimResult = await handleCsvTenantClaim(userText, userId);
+        if (csvClaimResult.handled && csvClaimResult.replyText) {
+            addMessageToSession(userId, "assistant", csvClaimResult.replyText);
+            return {
+                replyText: csvClaimResult.replyText,
+                recommendedButtons: csvClaimResult.customButtons || [],
+                extractedIntent: intentResult,
+            };
+        }
+
+        // 2. Fallback sang luồng Lark Base (nếu còn dùng)
         // Xử lý luồng xác thực CCCD cư dân — Zero Information Disclosure
         const claimResult = await handleCccdClaim(userText, userId, session.userName);
         if (claimResult.handled && claimResult.replyText) {
@@ -217,15 +230,15 @@ export async function generateReplyWithButtons(userText: string, userId: string 
 
     // 2.5. XỬ LÝ YÊU CẦU MỞ CỔNG / MỞ PHÒNG / GARA / SHIPPER (GATE_ACCESS)
     if (!reply && intentResult.intent === "GATE_ACCESS") {
-        if (userRoleCtx.role !== "PRIMARY_LEASEHOLDER" && userRoleCtx.role !== "CO_RESIDENT") {
-            reply = `Dạ, tính năng cấp mã mở cửa / passcode tự động chỉ dành cho cư dân đã đăng ký tại tòa nhà ạ.\n\nBạn vui lòng gửi số CCCD (12 chữ số) để xác thực cư dân, hoặc liên hệ Hotline Ban Quản lý:\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`;
+        if (userRoleCtx.role !== "PRIMARY_LEASEHOLDER" && userRoleCtx.role !== "CO_RESIDENT" && userRoleCtx.role !== "ADMIN") {
+            reply = `Dạ, tính năng cấp mã mở cửa / passcode tự động chỉ dành cho cư dân đã đăng ký tại tòa nhà ạ.\n\nBạn vui lòng gửi Họ tên kèm số CCCD (Ví dụ: "Phạm Kiều Oanh 092301002987") để Quản gia AI kích hoạt quyền cư dân và cấp mã ngay nhé!\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`;
             customButtons = [
-                { title: "🆔 Xác thực CCCD", payload: "CCCD của tôi là " },
+                { title: "🆔 Xác thực cư dân", payload: "Xác thực cư dân" },
                 { title: "📞 Hotline Ban Quản lý", payload: "Liên hệ" },
             ];
         } else {
-            const tagCode = userRoleCtx.tagCode || (session as any).tagCode;
-            const roomNum = userRoleCtx.roomNumber || session.roomNumber || "Chưa rõ";
+            const tagCode = (userRoleCtx.role === "ADMIN" && intentResult.roomNumber) ? `38PBV-${intentResult.roomNumber}` : (userRoleCtx.tagCode || (session as any).tagCode || "38PBV-102");
+            const roomNum = (userRoleCtx.role === "ADMIN" && intentResult.roomNumber) ? intentResult.roomNumber : (userRoleCtx.roomNumber || session.roomNumber || "102");
             const tenantName = userRoleCtx.tenantName ? ` ${userRoleCtx.tenantName}` : "";
             const doorType = intentResult.doorType || "UNSPECIFIED";
             const direction = intentResult.direction || "UNSPECIFIED";
@@ -305,7 +318,8 @@ export async function generateReplyWithButtons(userText: string, userId: string 
                     isReused = true;
                 } else {
                     // 2. Nếu chưa có mã hoặc đã hết hạn -> Gọi tạo mã mới
-                    result = await requestPasscode(targetLockCode, userId);
+                    const isAdmin = userRoleCtx.role === "ADMIN";
+                    result = await requestPasscode(targetLockCode, userId, isAdmin);
                     if (result.success && result.passcode) {
                         saveActivePasscode(userId, targetLockCode, {
                             passcode: result.passcode,

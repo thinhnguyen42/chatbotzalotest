@@ -33,8 +33,12 @@ export async function startTTLockServiceIfNeeded(): Promise<void> {
 
     // 2. Tìm thư mục chứa mã nguồn Python FastAPI
     const candidatePaths = [
+        path.resolve(process.cwd(), "..", "services", "iothub-ttlock"),
+        path.resolve(__dirname, "..", "..", "..", "services", "iothub-ttlock"),
+        path.resolve(process.cwd(), "services", "iothub-ttlock"),
+        path.resolve(__dirname, "..", "..", "services", "iothub-ttlock"),
+        // Giữ lại đường dẫn cũ dự phòng
         path.resolve(process.cwd(), "IotHubTTlock-main", "IotHubTTlock-main"),
-        path.resolve(process.cwd(), "..", "IotHubTTlock-main", "IotHubTTlock-main"),
         path.resolve(__dirname, "..", "..", "IotHubTTlock-main", "IotHubTTlock-main"),
     ];
 

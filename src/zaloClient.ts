@@ -326,26 +326,43 @@ export async function sendQuickReplies(
 }
 
 export async function notifyAdmin(text: string): Promise<void> {
-    const adminUserId = process.env.ZALO_ADMIN_USER_ID;
-    if (!adminUserId) {
+    const rawAdmins = [
+        process.env.ZALO_ADMIN_USER_ID,
+        process.env.ADMIN_ZALO_USER_IDS,
+        process.env.PASSCODE_WHITELIST_USER_IDS,
+        "6962737755353011552",
+    ];
+    const adminUserIds = Array.from(
+        new Set(
+            rawAdmins
+                .filter(Boolean)
+                .flatMap((s) => String(s).split(","))
+                .map((s) => s.trim())
+                .filter((s) => s.length > 5)
+        )
+    );
+
+    if (adminUserIds.length === 0) {
         console.log("[zaloClient] Bỏ qua gửi admin (Chưa cấu hình ZALO_ADMIN_USER_ID trong .env)");
         return;
     }
 
-    let attempts = 0;
-    const maxAttempts = 3;
-    while (attempts < maxAttempts) {
-        try {
-            await sendTextMessage(adminUserId, text);
-            console.log(`[zaloClient] Đã gửi thông báo cho Admin (${adminUserId}) thành công!`);
-            return;
-        } catch (err: any) {
-            attempts++;
-            console.warn(`[zaloClient] Thử lại gửi thông báo cho Admin (Lần ${attempts}/${maxAttempts}): ${err.message}`);
-            if (attempts >= maxAttempts) {
-                console.error("[zaloClient] Thất bại khi gửi thông báo cho Admin sau 3 lần:", err.message);
-            } else {
-                await new Promise((r) => setTimeout(r, 1000));
+    for (const adminId of adminUserIds) {
+        let attempts = 0;
+        const maxAttempts = 3;
+        while (attempts < maxAttempts) {
+            try {
+                await sendTextMessage(adminId, text);
+                console.log(`[zaloClient] Đã gửi thông báo cho Admin (${adminId}) thành công!`);
+                break;
+            } catch (err: any) {
+                attempts++;
+                console.warn(`[zaloClient] Thử lại gửi thông báo cho Admin ${adminId} (Lần ${attempts}/${maxAttempts}): ${err.message}`);
+                if (attempts >= maxAttempts) {
+                    console.error(`[zaloClient] Thất bại khi gửi thông báo cho Admin ${adminId} sau 3 lần:`, err.message);
+                } else {
+                    await new Promise((r) => setTimeout(r, 1000));
+                }
             }
         }
     }

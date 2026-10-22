@@ -2,6 +2,15 @@ import { getNewIncidentRecords, markIncidentNotified, IncidentRecord } from "../
 import { notifyAdmin } from "../zaloClient";
 
 let isPolling = false;
+let lastNightPollTime = 0;
+
+/**
+ * Kiểm tra xem có đang trong khung giờ nghỉ ngơi (23h đêm - 7h sáng) hay không.
+ */
+function isQuietHours(): boolean {
+    const hour = new Date().getHours();
+    return hour >= 23 || hour < 7;
+}
 
 /**
  * Format tin nhắn thông báo Admin khi có sự cố mới từ Lark Base Form
@@ -34,6 +43,16 @@ function formatAdminIncidentNotification(incident: IncidentRecord): string {
  * Trả về số lượng sự cố đã thông báo.
  */
 export async function pollNewIncidents(): Promise<number> {
+    if (isQuietHours()) {
+        const now = Date.now();
+        // Ban đêm (23h-7h) giãn chu kỳ ra ít nhất 60 phút mới quét 1 lần để tiết kiệm API
+        if (lastNightPollTime && now - lastNightPollTime < 60 * 60 * 1000) {
+            return 0;
+        }
+        lastNightPollTime = now;
+        console.log("[incidentNotifyPoller] 🌙 Đang trong khung giờ nghỉ ngơi (23h-7h), giãn tần suất quét...");
+    }
+
     if (isPolling) {
         console.log("[incidentNotifyPoller] Lần quét trước đang chạy, bỏ qua lần này.");
         return 0;
@@ -85,10 +104,11 @@ export async function pollNewIncidents(): Promise<number> {
 }
 
 /**
- * Khởi động polling định kỳ kiểm tra sự cố mới (mặc định mỗi 60 giây)
+ * Khởi động polling định kỳ kiểm tra sự cố mới (mặc định 15 phút = 900,000ms để tối ưu API)
  */
-export function startIncidentNotifyPoller(intervalMs: number = 60000): NodeJS.Timeout {
-    console.log(`[incidentNotifyPoller] Đã khởi động Poller kiểm tra sự cố mới (chu kỳ: ${intervalMs / 1000}s)`);
+export function startIncidentNotifyPoller(intervalMs?: number): NodeJS.Timeout {
+    const finalInterval = intervalMs ?? (Number(process.env.INCIDENT_NOTIFY_POLL_INTERVAL_MS) || 15 * 60 * 1000);
+    console.log(`[incidentNotifyPoller] ✅ Đã khởi động Poller kiểm tra sự cố mới (chu kỳ: ${finalInterval / 1000}s)`);
 
     // Chạy thử lần đầu ngay khi khởi động (delay 5s để server ổn định)
     setTimeout(() => {
@@ -101,7 +121,7 @@ export function startIncidentNotifyPoller(intervalMs: number = 60000): NodeJS.Ti
         pollNewIncidents().catch((e) =>
             console.error("[incidentNotifyPoller] Lỗi định kỳ:", e.message)
         );
-    }, intervalMs);
+    }, finalInterval);
 }
 
 /**

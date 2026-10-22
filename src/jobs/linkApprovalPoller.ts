@@ -16,6 +16,16 @@ const ACTIVE_LINKS_FILE = path.resolve(process.cwd(), "data", "active-links.json
 
 let isPolling = false;
 let isInitialized = false;
+let lastNightPollTime = 0;
+
+/**
+ * Kiểm tra xem có đang trong khung giờ nghỉ ngơi (23h đêm - 7h sáng) hay không.
+ * Trong khung giờ này, giãn tần suất quét để tiết kiệm tối đa quota API Lark Base.
+ */
+function isQuietHours(): boolean {
+    const hour = new Date().getHours();
+    return hour >= 23 || hour < 7;
+}
 
 function loadActiveLinks(): Map<string, ActiveTenantLink> {
     try {
@@ -63,6 +73,16 @@ function saveActiveLinks(map: Map<string, ActiveTenantLink>): void {
  * 2. TỰ ĐỘNG GỠ TAG & HỦY QUYỀN CƯ DÂN khi Admin bấm "Từ chối" hoặc xóa dòng trên Lark Base!
  */
 export async function pollApprovedLinkRequests(): Promise<number> {
+    if (isQuietHours()) {
+        const now = Date.now();
+        // Ban đêm (23h-7h) giãn chu kỳ ra ít nhất 60 phút mới quét 1 lần để tiết kiệm API
+        if (lastNightPollTime && now - lastNightPollTime < 60 * 60 * 1000) {
+            return 0;
+        }
+        lastNightPollTime = now;
+        console.log("[linkApprovalPoller] 🌙 Đang trong khung giờ nghỉ ngơi (23h-7h), quét định kỳ tiết kiệm API...");
+    }
+
     if (isPolling) {
         console.log("[linkApprovalPoller] Lần quét trước đang chạy, bỏ qua lần này.");
         return 0;
@@ -214,16 +234,17 @@ export async function pollApprovedLinkRequests(): Promise<number> {
 }
 
 /**
- * Khởi động tiến trình Poller định kỳ (mỗi 30-60 giây)
+ * Khởi động tiến trình Poller định kỳ (mặc định 15 phút = 900,000ms để tối ưu API cho nhà trọ ~16 phòng)
  */
-export function startLinkApprovalPoller(intervalMs: number = 30000): NodeJS.Timeout {
-    console.log(`[linkApprovalPoller] Đã khởi động Poller kiểm tra duyệt/gỡ hồ sơ Lark Base (chu kỳ: ${intervalMs / 1000}s)`);
+export function startLinkApprovalPoller(intervalMs?: number): NodeJS.Timeout {
+    const finalInterval = intervalMs ?? (Number(process.env.LINK_APPROVAL_POLL_INTERVAL_MS) || 15 * 60 * 1000);
+    console.log(`[linkApprovalPoller] ✅ Đã khởi động Poller kiểm tra duyệt/gỡ hồ sơ Lark Base (chu kỳ: ${finalInterval / 1000}s)`);
     // Chạy thử lần đầu ngay khi khởi động
     pollApprovedLinkRequests().catch((e) => console.error("[linkApprovalPoller] Lỗi lần quét đầu:", e.message));
 
     return setInterval(() => {
         pollApprovedLinkRequests().catch((e) => console.error("[linkApprovalPoller] Lỗi định kỳ:", e.message));
-    }, intervalMs);
+    }, finalInterval);
 }
 
 /**
