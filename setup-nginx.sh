@@ -38,7 +38,8 @@ sudo systemctl reload nginx
 echo "=== 5. Cấp chứng chỉ SSL HTTPS qua Certbot ==="
 sudo certbot --nginx -d zalobot-thinh.duckdns.org --non-interactive --agree-tos -m thinhnguyen42@gmail.com || true
 
-echo "=== 6. Khởi động Chatbot bằng PM2 ==="
+echo "=== 6. Biên dịch mã nguồn & Khởi động Chatbot bằng PM2 ==="
+pnpm run build
 pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js
 pm2 save
 

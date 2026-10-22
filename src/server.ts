@@ -32,6 +32,35 @@ app.use(
 // Nhớ ĐỔI TÊN file trong /public thành đúng tên mà Zalo yêu cầu
 app.use(express.static(path.join(__dirname, "..", "public")));
 
+// Route xác thực quyền sở hữu tên miền cho Zalo Developer (HTML file & Meta tags)
+app.get("/zalo_verifierMDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r.html", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta property="zalo-platform-site-verification" content="MDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r" />
+</head>
+<body>
+There Is No Limit To What You Can Accomplish Using Zalo!
+</body>
+</html>`);
+});
+
+app.get("/", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta property="zalo-platform-site-verification" content="MDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r" />
+    <meta name="zalo-platform-site-verification" content="MDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r" />
+    <title>Zalo OA Bot</title>
+</head>
+<body>
+<h1>Zalo OA Bot Active</h1>
+</body>
+</html>`);
+});
+
 const PORT = process.env.PORT || 3002;
 
 // Zalo sẽ POST vào đây mỗi khi có sự kiện (tin nhắn, follow, ...)
