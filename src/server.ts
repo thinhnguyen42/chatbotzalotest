@@ -34,16 +34,25 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 // Route xác thực quyền sở hữu tên miền cho Zalo Developer (HTML file & Meta tags)
 app.get("/zalo_verifierMDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r.html", (_req, res) => {
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(`<!DOCTYPE html>
+    const filePath = path.join(__dirname, "..", "public", "zalo_verifierMDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r.html");
+    if (fs.existsSync(filePath)) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.sendFile(filePath);
+    } else {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.send(`<!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta property="zalo-platform-site-verification" content="MDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r" />
 </head>
+
 <body>
 There Is No Limit To What You Can Accomplish Using Zalo!
 </body>
+
 </html>`);
+    }
 });
 
 app.get("/", (_req, res) => {
