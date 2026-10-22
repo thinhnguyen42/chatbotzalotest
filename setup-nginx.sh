@@ -1,9 +1,10 @@
 #!/bin/bash
 set -e
 
-echo "=== 1. Xóa cấu hình Nginx cũ bị lỗi ==="
+echo "=== 1. Xóa cấu hình Nginx cũ bị lỗi và trang mặc định ==="
 sudo rm -f /etc/nginx/sites-available/zalobot
 sudo rm -f /etc/nginx/sites-enabled/zalobot
+sudo rm -f /etc/nginx/sites-enabled/default
 
 echo "=== 2. Cài đặt Nginx & Certbot ==="
 sudo apt update
