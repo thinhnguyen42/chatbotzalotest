@@ -46,6 +46,7 @@ app.get("/zalo_verifierMDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r.html", (_req, res) =
 
 <head>
     <meta property="zalo-platform-site-verification" content="MDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r" />
+    <meta name="zalo-platform-site-verification" content="MDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r" />
 </head>
 
 <body>
