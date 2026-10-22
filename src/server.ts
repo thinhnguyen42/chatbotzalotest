@@ -73,6 +73,20 @@ app.get("/", (_req, res) => {
 
 const PORT = process.env.PORT || 3002;
 
+// Phục vụ Zalo Developer Console kiểm tra Webhook (GET / HEAD)
+app.get("/webhook", (req: Request, res: Response) => {
+    console.log("[webhook] Nhận GET kiểm tra webhook từ Zalo:", req.query);
+    const challenge = req.query["hub.challenge"] || req.query.challenge;
+    if (challenge) {
+        return res.status(200).send(challenge);
+    }
+    return res.status(200).send("OK");
+});
+
+app.head("/webhook", (_req: Request, res: Response) => {
+    res.status(200).end();
+});
+
 // Zalo sẽ POST vào đây mỗi khi có sự kiện (tin nhắn, follow, ...)
 app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) => {
     // Trả 200 ngay để Zalo không bị timeout / gửi lại request
