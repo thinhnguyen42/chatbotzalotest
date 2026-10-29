@@ -123,10 +123,10 @@ export function extractIntentAndEntities(text: string, currentRoom?: string): In
         };
     }
 
-    // 6.5. Phân loại Yêu cầu mở cổng / mở phòng / Shipper / Gara (GATE_ACCESS)
+    // 6.5. Phân loại Yêu cầu mở cổng / mở phòng / Shipper / Gara / Mật khẩu / Mã PIN (GATE_ACCESS)
     const isGateAccess =
-        /\b(mo cong|mo cua|quen the|quen the tu|vao nha|vao phong|lay passcode|lay ma cua|ma mo cua|passcode|password cong|mat khau cong|mat ma cong|cho nguoi than|nguoi nha vao|muon vao|ban vao choi|shipper|ship hang|giao hang|ship do|nhan hang|don hang|vao gara|mo gara|quen pass|cua to|cua nho|cua gara|cua phong|chieu vao|chieu ra|chon cua khac|cua khac|doi cua|chon cua|mo cua khac|mo them cua)\b/i.test(normText)
-        || /\b(mở cổng|mở cửa|quên thẻ|quên thẻ từ|vào nhà|vào phòng|lấy passcode|lấy mã cửa|mã mở cửa|passcode|cho người thân|người nhà vào|muốn vào|bạn vào chơi|shipper|ship hàng|giao hàng|ship đồ|nhận hàng|đơn hàng|vào gara|mở gara|quên pass|cửa to|cửa nhỏ|cửa gara|cửa phòng|chiều vào|chiều ra|chọn cửa khác|cửa khác|đổi cửa|chọn cửa|mở cửa khác|mở thêm cửa)\b/i.test(text);
+        /\b(mo cong|mo cua|quen the|quen the tu|vao nha|vao phong|lay passcode|lay ma cua|ma mo cua|passcode|password|mat khau|mat ma|ma pin|xin pass|cho pass|xin ma pin|cho ma pin|lay ma pin|xin mk|cho mk|lay mk|lay pass|xin mat khau|cho mat khau|cho tui mat khau|cho em mat khau|password cong|mat khau cong|mat ma cong|cho nguoi than|nguoi nha vao|muon vao|ban vao choi|shipper|ship hang|giao hang|ship do|nhan hang|don hang|vao gara|mo gara|quen pass|cua to|cua nho|cua gara|cua phong|chieu vao|chieu ra|chon cua khac|cua khac|doi cua|chon cua|mo cua khac|mo them cua)\b/i.test(normText)
+        || /\b(mở cổng|mở cửa|quên thẻ|quên thẻ từ|vào nhà|vào phòng|lấy passcode|lấy mã cửa|mã mở cửa|passcode|password|mật khẩu|mật mã|mã pin|xin pass|cho pass|xin mã pin|cho mã pin|lấy mã pin|xin mk|cho mk|lấy mk|lấy pass|xin mật khẩu|cho mật khẩu|cho tui mật khẩu|cho em mật khẩu|cho người thân|người nhà vào|muốn vào|bạn vào chơi|shipper|ship hàng|giao hàng|ship đồ|nhận hàng|đơn hàng|vào gara|mở gara|quên pass|cửa to|cửa nhỏ|cửa gara|cửa phòng|chiều vào|chiều ra|chọn cửa khác|cửa khác|đổi cửa|chọn cửa|mở cửa khác|mở thêm cửa)\b/i.test(text);
 
     if (isGateAccess) {
         let doorType: GateDoorType = "UNSPECIFIED";

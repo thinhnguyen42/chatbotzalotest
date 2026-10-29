@@ -334,9 +334,9 @@ export async function generateReplyWithButtons(userText: string, userId: string 
                 if (result.success && result.passcode) {
                     const expireStr = `${result.validMinutes ?? 30} phút`;
                     if (isReused) {
-                        reply = `🔑 Quản gia AI gửi lại mã mở ${doorLabel} đang hoạt động của bạn:\n\nMã PIN: ${result.passcode}\nThời hạn còn lại: khoảng ${expireStr}\n\n📌 Hướng dẫn mở cửa:\n• Nhập mã PIN trên bàn phím khóa để mở cửa.\n• Sau khi qua cửa, bạn vui lòng khép cửa cẩn thận nhé!\n\n⚠️ Vui lòng không chia sẻ mã này cho người lạ ngoài người thân.`;
+                        reply = `🔑 Quản gia AI gửi lại mã mở ${doorLabel} đang hoạt động của bạn:\n\nMã PIN: ${result.passcode}\nThời hạn còn lại: khoảng ${expireStr}\n\n📌 Hướng dẫn mở cửa:\n• Nhập mã PIN và bấm phím # trên bàn phím khóa (Ví dụ: ${result.passcode}#).\n• Sau khi qua cửa, bạn vui lòng khép cửa cẩn thận nhé!\n\n⚠️ Vui lòng không chia sẻ mã này cho người lạ ngoài người thân.`;
                     } else {
-                        reply = `🔑 Quản gia AI đã tạo mã mở ${doorLabel} cho bạn:\n\nMã PIN: ${result.passcode}\nHiệu lực: ${expireStr} (tự hủy sau khi hết hạn)\n\n📌 Hướng dẫn mở cửa:\n• Nhập mã PIN trên bàn phím khóa để mở cửa.\n• Sau khi qua cửa, bạn vui lòng khép cửa cẩn thận nhé!\n\n⚠️ Vui lòng không chia sẻ mã này cho người lạ ngoài người thân.`;
+                        reply = `🔑 Quản gia AI đã tạo mã mở ${doorLabel} cho bạn:\n\nMã PIN: ${result.passcode}\nHiệu lực: ${expireStr} (tự hủy sau khi hết hạn)\n\n📌 Hướng dẫn mở cửa:\n• Nhập mã PIN và bấm phím # trên bàn phím khóa (Ví dụ: ${result.passcode}#).\n• Sau khi qua cửa, bạn vui lòng khép cửa cẩn thận nhé!\n\n⚠️ Vui lòng không chia sẻ mã này cho người lạ ngoài người thân.`;
                         adminNotificationMsg = `🚪 [PASSCODE ĐÃ CẤP]\n• Cửa: ${doorLabel} (${targetLockCode})\n• Phòng: ${roomNum} (${tagCode})\n• Cư dân: ${userRoleCtx.tenantName || "Cư dân"}\n• Mã PIN: ${result.passcode}\n• Hiệu lực: ${expireStr}\n• Thời gian cấp: ${new Date().toLocaleString("vi-VN")}`;
                     }
 
