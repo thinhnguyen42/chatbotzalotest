@@ -142,7 +142,10 @@ export function loadTenantsFromCsv(): CsvTenant[] {
             // Chuẩn hóa số phòng (ví dụ "P.101", "Phòng 101" -> "101")
             const roomMatch = rawRoom.match(/\d{3,4}/);
             const roomNumber = roomMatch ? roomMatch[0] : rawRoom.replace(/[^a-zA-Z0-9]/g, "");
-            const building = rawBuilding.trim() || "38PBV";
+            let building = (rawBuilding.trim() || "38PBV").toUpperCase();
+            if (!building || building === "TEST") {
+                building = "38PBV";
+            }
             const tagCode = `${building}-${roomNumber}`;
 
             const normRole = removeVietnameseDiacritics(rawRole);

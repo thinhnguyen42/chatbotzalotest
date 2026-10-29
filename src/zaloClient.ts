@@ -536,7 +536,37 @@ export async function sendHouseRulesImage(userId: string): Promise<void> {
  * Endpoint: POST https://openapi.zalo.me/v2.0/oa/tag/tagfollower
  * RÀNG BUỘC: Non-blocking try/catch để không làm gián đoạn phản hồi của bot.
  */
-export async function setUserTagInZalo(userId: string, tagName: string): Promise<boolean> {
+/**
+ * Chuẩn hóa tag Zalo OA luôn theo quy chuẩn: [Mã toà nhà]-[Mã phòng] (ví dụ: 38PBV-601).
+ * Tránh việc bị thay đổi hoặc truyền nhầm sang định dạng khác (như mã định danh cư dân).
+ */
+export function normalizeZaloTag(tagName: string): string {
+    let tag = (tagName || "").trim().toUpperCase();
+    if (!tag) return "";
+
+    // Nếu vô tình truyền mã cư dân dạng CD-601-xxxx -> bóc tách số phòng và trả về 38PBV-601
+    const cdMatch = tag.match(/^CD-(\d{3,4})-\d+$/i);
+    if (cdMatch) {
+        return `38PBV-${cdMatch[1]}`;
+    }
+
+    // Nếu chỉ truyền số phòng (ví dụ "601" hoặc "P601") -> chuẩn hóa thành 38PBV-601
+    const roomMatch = tag.match(/^(?:P\.?)?(\d{3,4})$/i);
+    if (roomMatch) {
+        return `38PBV-${roomMatch[1]}`;
+    }
+
+    // Nếu mã toà nhà là TEST hoặc rác, đưa về 38PBV
+    if (tag.startsWith("TEST-")) {
+        return tag.replace(/^TEST-/i, "38PBV-");
+    }
+
+    return tag;
+}
+
+export async function setUserTagInZalo(userId: string, rawTagName: string): Promise<boolean> {
+    const tagName = normalizeZaloTag(rawTagName);
+    if (!tagName) return false;
     try {
         let token = await ensureValidToken();
         let res = await axios.post(
@@ -593,7 +623,9 @@ export const syncUserTagToZaloOA = setUserTagInZalo;
  * Gỡ nhãn người dùng khỏi Zalo OA.
  * Endpoint: POST https://openapi.zalo.me/v2.0/oa/tag/rmfollowerfromtag
  */
-export async function removeUserTagInZalo(userId: string, tagName: string): Promise<boolean> {
+export async function removeUserTagInZalo(userId: string, rawTagName: string): Promise<boolean> {
+    const tagName = normalizeZaloTag(rawTagName);
+    if (!tagName) return false;
     try {
         let token = await ensureValidToken();
         let res = await axios.post(

@@ -208,7 +208,8 @@ export async function getContractByCccd(cccd: string): Promise<ContractRecord | 
             (vaiTro === "Người ở cùng" || vaiTro === "Cùng lưu trú") ? "CO_RESIDENT" : "PRIMARY_LEASEHOLDER";
 
         const address = "38 Phan Bá Vành, P. Cát Lái, TP Hồ Chí Minh";
-        const tagCode = `${building}-${roomNumber}`;
+        const validBuilding = (!building || building.trim().toUpperCase() === "TEST") ? "38PBV" : building.trim().toUpperCase();
+        const tagCode = `${validBuilding}-${roomNumber}`;
 
         // 2. KIỂM TRA CHÉO BOT_LINK_REQUESTS qua cache: đã có Zalo UID nào được duyệt gắn vào tenant này chưa?
         let existingZaloUserId: string | undefined = undefined;
