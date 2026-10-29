@@ -12,7 +12,7 @@ export const LARK_CONTRACTS_TABLE_ID = process.env.LARK_CONTRACTS_TABLE_ID || "t
 export const LARK_BOT_LINK_REQUESTS_TABLE_ID = process.env.LARK_BOT_LINK_REQUESTS_TABLE_ID || "tbliWOdN1EkaYR4E";
 
 // Bảng báo sự cố (INCIDENT_REPORTS) - Thay bằng Table ID thực tế từ Lark Base
-export const LARK_INCIDENTS_TABLE_ID = process.env.LARK_INCIDENTS_TABLE_ID || "REPLACE_WITH_YOUR_INCIDENT_TABLE_ID";
+export const LARK_INCIDENTS_TABLE_ID = process.env.LARK_INCIDENTS_TABLE_ID || "";
 
 // Link form chia sẻ của Lark Base (Form View) - Báo sự cố / sửa chữa hư hỏng
 export const LARK_INCIDENT_FORM_URL =
