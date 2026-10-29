@@ -86,8 +86,13 @@ export function isJunkText(text: string): boolean {
     const trimmed = text.trim();
     if (!trimmed) return true;
 
-    // Ngoại lệ: Cho phép số phòng hợp lệ (ví dụ: 101, 1204, phòng 101, P.101)
+    // 0. NGOẠI LỆ HỢP LỆ: Các thông tin cư dân, CCCD, số phòng, từ khóa nghiệp vụ
+    // - Chứa số CCCD/CMND/SĐT (dãy từ 9 đến 12 chữ số liên tiếp)
+    if (/\b\d{9,12}\b/.test(trimmed)) return false;
+    // - Số phòng hợp lệ (ví dụ: 101, 1204, phòng 101, P.101)
     if (/^(phòng\s*|phong\s*|p\.?\s*)?\d{3,4}$/i.test(trimmed)) return false;
+    // - Chứa các từ khóa thông dụng của nhà trọ / định danh cư dân
+    if (/\b(cccd|cmnd|căn cước|can cuoc|phòng|phong|pass|passcode|mật khẩu|mat khau|cửa|cua|wifi|nội quy|noi quy|sự cố|su co|hợp đồng|hop dong|tiền|cọc|stk|atm)\b/i.test(trimmed)) return false;
 
     // 1. Lặp ký tự liên tiếp quá nhiều (vd: "aaaaaaa", "hhhhhh", "hahahaha...")
     if (/(.)\1{4,}/i.test(trimmed)) return true;
@@ -98,15 +103,24 @@ export function isJunkText(text: string): boolean {
     // 3. Chuỗi phụ âm liên tiếp >= 5 ký tự (Gõ phím bừa: "asdfghjkl", "sdfghjkl", "bczxqv")
     if (/[bcdfghjklmnpqrstvwxzđ]{5,}/i.test(trimmed)) return true;
 
-    // 4. Chuỗi từ dài không có nguyên âm tiếng Việt/Anh (Bỏ qua từ chỉ toàn chữ số / số điện thoại)
+    // 4. Chuỗi từ dài không có nguyên âm tiếng Việt/Anh
     const words = trimmed.split(/\s+/);
+    const ALLOWED_ABBRS = new Set(["cccd", "cmnd", "pccc", "ttlock", "admin", "zalo", "wifi", "vnd", "stk", "atm", "techcombank", "vietcombank", "mbbank"]);
+
     for (const word of words) {
-        // Bỏ qua các chuỗi chỉ chứa chữ số, số điện thoại, hoặc số kèm dấu chấm/phẩy (vd: 0123456788, 101, 14h)
-        if (/^[\d.,\-\/]+$/.test(word) || /^\d+[a-z]?$/i.test(word)) continue;
+        // Tách bỏ dấu câu ở đầu/cuối từ (ví dụ: "CCCD:" -> "CCCD", "(0987...)" -> "0987...")
+        const cleanWord = word.replace(/^[^\w\u00C0-\u024F\u1EA0-\u1EF9]+|[^\w\u00C0-\u024F\u1EA0-\u1EF9]+$/g, "");
+        if (!cleanWord) continue;
+
+        // Bỏ qua nếu là số, số điện thoại, hoặc số kèm chữ
+        if (/^[\d.,\-\/]+$/.test(cleanWord) || /^\d+[a-z]?$/i.test(cleanWord)) continue;
+
+        // Bỏ qua từ viết tắt hợp lệ
+        if (ALLOWED_ABBRS.has(cleanWord.toLowerCase())) continue;
 
         if (
-            word.length >= 5 &&
-            !/[aeiouyáàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵ]/i.test(word)
+            cleanWord.length >= 5 &&
+            !/[aeiouyáàảãạăắằẳẵặâấầẩẫậéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵ]/i.test(cleanWord)
         ) {
             return true;
         }
