@@ -14,6 +14,8 @@ import { getSession } from "./memory/sessionMemory";
 import { LARK_INCIDENT_FORM_URL, invalidateTenantCache } from "./lark/larkClient";
 import { startTTLockServiceIfNeeded } from "./ttlock/ttlockServiceManager";
 import { prewarmTTLock } from "./ttlock/ttlockClient";
+import { startMonthlyBillCron } from "./jobs/monthlyBillCron";
+import { sendTestBillToWhitelist, dispatchMonthlyBills } from "./billing/billService";
 
 const app = express();
 
@@ -124,6 +126,17 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                 // Bỏ qua gói tin test giả lập từ Zalo Developer Portal Webhook Tester (tránh lỗi user_id is invalid)
                 if (event.message?.msg_id === "This is message id" || userText === "This is testing message" || userId === "6053690184268964198") {
                     console.log("[webhook] Nhận gói tin Webhook Test giả lập từ Zalo Developer Portal. Bỏ qua phản hồi để tránh lỗi user_id is invalid.");
+                    return;
+                }
+
+                // Lệnh gửi hóa đơn thử nghiệm cho Whitelist
+                if (/^(test bill|admin test bill|gửi bill test|gui bill test)$/i.test(userText.trim())) {
+                    await sendTextMessage(userId, "🧪 Quản gia AI đang gửi hóa đơn mẫu kèm mã QR thanh toán tới danh sách Whitelist...");
+                    sendTestBillToWhitelist().then(res => {
+                        console.log("[server] Kết quả gửi bill test:", res);
+                    }).catch(err => {
+                        console.error("[server] Lỗi gửi bill test:", err.message);
+                    });
                     return;
                 }
 
@@ -417,6 +430,9 @@ app.listen(PORT, () => {
     }
 
 
+    // Khởi động Cron Job gửi hóa đơn tự động lúc 20:00 ngày 1 hằng tháng (Asia/Ho_Chi_Minh)
+    startMonthlyBillCron();
+
     // Tự động kiểm tra và khởi chạy dịch vụ TTLock FastAPI (cổng 8001) nếu chưa chạy
     startTTLockServiceIfNeeded().catch((err) => {
         console.warn("[server] Không thể khởi chạy TTLock service tự động:", err.message);
@@ -431,6 +447,30 @@ app.listen(PORT, () => {
 // SHORT URL: /bao-su-co — Redirect đến Lark Base Form với thông tin pre-fill
 // Khách Zalo click link này → server tra cứu phòng/tòa từ session → redirect
 // ─────────────────────────────────────────────────────────────────────────────
+// Endpoint kiểm tra & gửi thử nghiệm hóa đơn tới Whitelist
+app.all("/api/bills/test-whitelist", async (_req: Request, res: Response) => {
+    try {
+        console.log("[server] Nhận yêu cầu gửi thử nghiệm hóa đơn tới Whitelist...");
+        const result = await sendTestBillToWhitelist();
+        res.json(result);
+    } catch (err: any) {
+        console.error("[server] Lỗi gửi thử nghiệm hóa đơn:", err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Endpoint kích hoạt gửi toàn bộ hóa đơn tháng (dành cho Admin trigger thủ công nếu cần)
+app.all("/api/bills/dispatch-monthly", async (_req: Request, res: Response) => {
+    try {
+        console.log("[server] Admin kích hoạt gửi toàn bộ hóa đơn tháng...");
+        const result = await dispatchMonthlyBills();
+        res.json(result);
+    } catch (err: any) {
+        console.error("[server] Lỗi kích hoạt gửi hóa đơn tháng:", err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get(["/bao-su-co", "/sc"], (req: Request, res: Response) => {
     const uid = req.query.uid as string;
 
