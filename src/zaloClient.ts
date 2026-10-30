@@ -532,6 +532,57 @@ export async function sendHouseRulesImage(userId: string): Promise<void> {
 }
 
 /**
+ * Gửi ảnh trực tiếp tới Zalo user bằng attachment_id đã upload lên CDN Zalo
+ */
+export async function sendAttachmentImage(userId: string, attachmentId: string): Promise<boolean> {
+    if (!attachmentId) return false;
+    let token = await ensureValidToken();
+    const payload = {
+        recipient: { user_id: userId },
+        message: {
+            attachment: {
+                type: "template",
+                payload: {
+                    template_type: "media",
+                    elements: [
+                        {
+                            media_type: "image",
+                            attachment_id: attachmentId,
+                        },
+                    ],
+                },
+            },
+        },
+    };
+
+    try {
+        let res = await axios.post(
+            "https://openapi.zalo.me/v3.0/oa/message/cs",
+            payload,
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    access_token: token,
+                },
+            }
+        );
+
+        if (res.data && res.data.error === 0) {
+            const msgId = res.data.data?.message_id;
+            if (msgId) markMsgIdAsBotSent(msgId);
+            console.log(`[zaloClient] Đã gửi ảnh (attachment_id: ${attachmentId.slice(0, 15)}...) tới user: ${userId}`);
+            return true;
+        } else {
+            console.error(`[zaloClient] THẤT BẠI khi gửi ảnh attachment_id tới ${userId}:`, res.data);
+            return false;
+        }
+    } catch (err: any) {
+        console.error("[zaloClient] Lỗi gửi ảnh attachment_id:", err.response?.data || err.message);
+        return false;
+    }
+}
+
+/**
  * Gán tag người dùng trên Zalo OA.
  * Endpoint: POST https://openapi.zalo.me/v2.0/oa/tag/tagfollower
  * RÀNG BUỘC: Non-blocking try/catch để không làm gián đoạn phản hồi của bot.

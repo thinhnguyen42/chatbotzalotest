@@ -1,7 +1,10 @@
 import axios from "axios";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { getTenantAccessToken, LARK_BASE_APP_TOKEN } from "../lark/larkClient";
 import { getLocalActiveLinks } from "../user/tenantCsvService";
-import { sendQuickReplies, sendImageMessage } from "../zaloClient";
+import { sendQuickReplies, uploadLocalImageToZalo, sendAttachmentImage } from "../zaloClient";
 import "dotenv/config";
 
 // Cấu hình bảng BILLS trên Lark Base
@@ -65,23 +68,72 @@ export function findZaloUserByRoom(roomNumber: string): string | null {
 }
 
 /**
- * Tạo URL mã QR thanh toán chuẩn VietQR (tự điền số tiền và cú pháp chuyển khoản)
+ * Tạo ảnh VietQR chuẩn NAPAS qua API v2 và upload lên Zalo OA CDN
  */
-export function generateVietQrUrl(params: {
-    bankId?: string;
-    accountNo?: string;
-    accountName?: string;
+export async function generateAndUploadVietQr(params: {
     amount: number;
     roomNumber: string;
     monthStr?: string;
-}): string {
-    const bankId = params.bankId || process.env.VIETQR_BANK_ID || "MB";
-    const accountNo = params.accountNo || process.env.VIETQR_ACCOUNT_NO || "0945234616";
-    const accountName = encodeURIComponent(params.accountName || process.env.VIETQR_ACCOUNT_NAME || "SUNHAVENS");
-    const month = params.monthStr || `${new Date().getMonth() + 1}`;
-    const description = encodeURIComponent(`TIEN PHONG ${params.roomNumber} T${month}`);
+}): Promise<string | null> {
+    try {
+        const month = params.monthStr || `${new Date().getMonth() + 1}`;
+        const accountNo = process.env.VIETQR_ACCOUNT_NO || "0945234616";
+        const accountName = process.env.VIETQR_ACCOUNT_NAME || "SUNHAVENS";
+        const acqId = process.env.VIETQR_ACQ_ID || "970422"; // MBBank
+        const addInfo = `TIEN PHONG ${params.roomNumber} T${month}`;
 
-    return `https://img.vietqr.io/image/${bankId}-${accountNo}-compact2.png?amount=${params.amount}&addInfo=${description}&accountName=${accountName}`;
+        console.log(`[billService] 💳 Tạo ảnh VietQR: ${accountNo} (${accountName}) - Số tiền: ${params.amount} đ`);
+
+        const qrRes = await axios.post(
+            "https://api.vietqr.io/v2/generate",
+            {
+                accountNo,
+                accountName,
+                acqId,
+                amount: Math.round(params.amount),
+                addInfo,
+                format: "text",
+                template: "compact2",
+            },
+            { timeout: 8000 }
+        );
+
+        const qrDataUrl = qrRes.data?.data?.qrDataURL;
+        if (!qrDataUrl) {
+            console.warn("[billService] VietQR API không trả về qrDataURL:", qrRes.data);
+            return null;
+        }
+
+        const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, "");
+        const tempPath = path.join(os.tmpdir(), `vietqr_${params.roomNumber}_${Date.now()}.png`);
+        fs.writeFileSync(tempPath, Buffer.from(base64Data, "base64"));
+
+        const attachmentId = await uploadLocalImageToZalo(tempPath);
+        try { fs.unlinkSync(tempPath); } catch {}
+        return attachmentId;
+    } catch (err: any) {
+        console.error("[billService] Lỗi tạo và upload VietQR:", err.message);
+        return null;
+    }
+}
+
+/**
+ * Tải ảnh từ URL (ví dụ từ Lark Base attachment) và upload lên Zalo OA CDN
+ */
+export async function downloadAndUploadToZalo(imageUrl: string): Promise<string | null> {
+    try {
+        const resp = await axios.get(imageUrl, { responseType: "arraybuffer", timeout: 10000 });
+        const ext = imageUrl.includes(".jpg") || imageUrl.includes(".jpeg") ? "jpg" : "png";
+        const tempPath = path.join(os.tmpdir(), `bill_img_${Date.now()}.${ext}`);
+        fs.writeFileSync(tempPath, Buffer.from(resp.data));
+
+        const attachmentId = await uploadLocalImageToZalo(tempPath);
+        try { fs.unlinkSync(tempPath); } catch {}
+        return attachmentId;
+    } catch (err: any) {
+        console.error("[billService] Lỗi tải ảnh từ URL và upload lên Zalo:", err.message);
+        return null;
+    }
 }
 
 /**
@@ -224,21 +276,30 @@ export async function sendBillToUser(bill: BillRecord, targetUserId: string): Pr
         // 1. Gửi tin nhắn thông báo tóm tắt hóa đơn kèm 2 nút tương tác
         await sendQuickReplies(targetUserId, messageText, buttons);
 
-        // 2. Gửi mã QR ngân hàng để quét chuyển khoản
-        const qrUrl = bill.qrImageUrl || generateVietQrUrl({
-            amount: bill.totalAmount,
-            roomNumber: bill.roomNumber,
-        });
-
-        if (qrUrl) {
-            console.log(`[billService] Gửi ảnh mã VietQR tới user ${targetUserId}...`);
-            await sendImageMessage(targetUserId, qrUrl);
+        // 2. Gửi mã QR ngân hàng để quét chuyển khoản (Ưu tiên ảnh từ Lark nếu có, không thì sinh VietQR động)
+        let qrAttachmentId: string | null = null;
+        if (bill.qrImageUrl) {
+            qrAttachmentId = await downloadAndUploadToZalo(bill.qrImageUrl);
+        }
+        if (!qrAttachmentId) {
+            qrAttachmentId = await generateAndUploadVietQr({
+                amount: bill.totalAmount,
+                roomNumber: bill.roomNumber,
+            });
         }
 
-        // 3. Nếu có ảnh hóa đơn chi tiết đính kèm thì gửi tiếp ảnh hóa đơn
+        if (qrAttachmentId) {
+            console.log(`[billService] Gửi ảnh mã VietQR tới user ${targetUserId}...`);
+            await sendAttachmentImage(targetUserId, qrAttachmentId);
+        }
+
+        // 3. Nếu có ảnh hóa đơn chi tiết đính kèm từ Lark thì gửi tiếp ảnh hóa đơn
         if (bill.billImageUrl) {
-            console.log(`[billService] Gửi ảnh Bill chi tiết tới user ${targetUserId}...`);
-            await sendImageMessage(targetUserId, bill.billImageUrl);
+            const billAttachmentId = await downloadAndUploadToZalo(bill.billImageUrl);
+            if (billAttachmentId) {
+                console.log(`[billService] Gửi ảnh Bill chi tiết tới user ${targetUserId}...`);
+                await sendAttachmentImage(targetUserId, billAttachmentId);
+            }
         }
 
         console.log(`[billService] ✅ Đã gửi thành công bill phòng ${bill.roomNumber} tới user ${targetUserId}`);
