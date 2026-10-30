@@ -3,6 +3,7 @@ import path from "path";
 import { ADMIN_ZALO_USER_ID } from "../config/adminConfig";
 import { getContractByPhone, getContractByCccd, createLinkRequest, findApprovedLinkByZaloUserId, isLarkQuotaBlocked } from "../lark/larkClient";
 import { getSession, updateSessionContext } from "../memory/sessionMemory";
+import { isValidFullName, extractNameFromMessage, isNameMatch } from "./tenantCsvService";
 
 export type UserRole = "ADMIN" | "PRIMARY_LEASEHOLDER" | "CO_RESIDENT" | "UNTAGGED_GUEST";
 
@@ -235,6 +236,18 @@ export async function handleCccdClaim(
         return { handled: false };
     }
 
+    // 0. GATEKEEPER 2 YẾU TỐ: Bắt buộc phải có cả Họ Tên và Số CCCD trước khi gọi API Lark Base
+    const session = getSession(zaloUserId) as any;
+    let candidateName = extractNameFromMessage(userText, cccd);
+    if (!candidateName && session?.pendingTenantVerification?.step === "AWAIT_NAME") {
+        candidateName = userText.trim();
+    }
+
+    if (!isValidFullName(candidateName)) {
+        console.log(`[userRoleService] 🛡️ Gatekeeper: Tin nhắn chứa CCCD ${cccd} nhưng chưa có Họ Tên hợp lệ ("${candidateName}"). Chặn gọi Lark API.`);
+        return { handled: false };
+    }
+
     // 1. KIỂM TRA RATE LIMIT (Giới hạn 15 phút mỗi user)
     const lastClaim = claimThrottleMap.get(zaloUserId);
     if (lastClaim && Date.now() - lastClaim < CLAIM_THROTTLE_MS) {
@@ -269,6 +282,15 @@ export async function handleCccdClaim(
             // Không tìm thấy hồ sơ CCCD -> Cache lại để không query lại số này
             unknownCccdCache.set(cccd, Date.now() + UNKNOWN_CCCD_TTL_MS);
             return { handled: false };
+        }
+
+        // BẢO VỆ ĐỐI SOÁT TÊN TRÊN LARK BASE: Chỉ tạo link request nếu Tên người dùng khớp với Hợp đồng
+        if (!isNameMatch(candidateName, contract.tenantName)) {
+            console.log(`[userRoleService] ⚠️ Họ tên cung cấp ("${candidateName}") không khớp với tên hợp đồng trên Lark ("${contract.tenantName}"). Từ chối tạo link request.`);
+            return {
+                handled: true,
+                replyText: `⚠️ Họ và tên bạn cung cấp ("${candidateName}") chưa trùng khớp với tên trong hợp đồng của số CCCD ${cccd}.\n\nBạn vui lòng kiểm tra lại chính xác họ tên nhé!`,
+            };
         }
 
         claimThrottleMap.set(zaloUserId, Date.now());

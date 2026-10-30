@@ -200,16 +200,53 @@ export function isNameMatch(inputName: string, csvName: string): boolean {
     return cleanCsv.includes(cleanIn) || cleanIn.includes(cleanCsv);
 }
 
+export const NON_NAME_KEYWORDS = [
+    "tai khoan", "ngan hang", "don hang", "buu kien", "ma pin", "passcode",
+    "wifi", "tien dien", "tien phong", "tien nuoc", "stk", "hop dong",
+    "bien lai", "chuyen khoan", "so phong", "phong", "bao hiem", "cong to",
+    "dien thoai", "lien he", "admin", "hotline", "khach hang"
+];
+
+/**
+ * Kiểm tra xem một chuỗi có phải là Họ và Tên người hợp lệ hay không.
+ * Yêu cầu: ít nhất 2 từ (Họ + Tên), không chứa từ khóa rác (tài khoản, đơn hàng, wifi...).
+ */
+export function isValidFullName(name: string): boolean {
+    if (!name || name.length < 4) return false;
+    const words = name.trim().split(/\s+/);
+    if (words.length < 2 || words.length > 6) return false;
+
+    const norm = removeVietnameseDiacritics(name.toLowerCase());
+    for (const kw of NON_NAME_KEYWORDS) {
+        if (norm.includes(kw)) return false;
+    }
+
+    for (const w of words) {
+        if (!/^[a-zA-ZÀ-ỹ]+$/.test(w)) return false;
+    }
+    return true;
+}
+
+/**
+ * Kiểm tra tin nhắn có từ khóa định danh CCCD/Cư dân rõ ràng hay không.
+ */
+export function hasExplicitCccdKeyword(text: string): boolean {
+    return /(?:cccd|cmnd|căn\s*cước|can\s*cuoc|định\s*danh|dinh\s*danh|xác\s*thực|xac\s*thuc|cư\s*dân|cu\s*dan|chủ\s*hộ|chu\s*ho|người\s*thuê|nguoi\s*thue|hợp\s*đồng|hop\s*dong)/i.test(text);
+}
+
 /**
  * Trích xuất tên từ tin nhắn khi người dùng gửi kèm cả tên và CCCD
  * Ví dụ: "Nguyễn Văn A 079201001234", "Tôi tên Nguyễn Văn A, số cccd: 079201001234"
  */
-function extractNameFromMessage(text: string, cccd: string): string {
+export function extractNameFromMessage(text: string, cccd: string): string {
     let t = text;
     // Bỏ số CCCD
-    t = t.replace(cccd, "");
-    // Bỏ các từ khóa nhãn
-    t = t.replace(/(?:toi\s+ten|toi\s+la|ten\s+toi\s+la|ho\s+va\s+ten|ho\s+ten|ten|cccd|cmnd|so\s+cccd|so\s+cmnd|can\s+cuoc|dinh\s+danh|la|so)\s*:?/gi, " ");
+    t = t.replace(cccd, " ");
+    // Bỏ các từ khóa nhãn xưng hô phổ biến
+    t = t.replace(
+        /(?:tôi\s+tên\s+là|toi\s+ten\s+la|tôi\s+tên|toi\s+ten|tôi\s+là|toi\s+la|tên\s+tôi\s+là|ten\s+toi\s+la|họ\s+và\s+tên|ho\s+va\s+ten|họ\s+tên|ho\s+ten|tên|ten|cccd|cmnd|số\s+cccd|so\s+cccd|số\s+cmnd|so\s+cmnd|căn\s+cước|can\s+cuoc|định\s+danh|dinh\s+danh|xác\s+thực|xac\s+thuc|là|la|số|so)\s*:?/gi,
+        " "
+    );
     t = t.replace(/[^a-zA-ZÀ-ỹ\s]/g, " ").replace(/\s+/g, " ").trim();
     return t;
 }
@@ -217,8 +254,9 @@ function extractNameFromMessage(text: string, cccd: string): string {
 /**
  * Xử lý xác thực cư dân qua file CSV tenants và gán Tag tự động.
  * ĐẢM BẢO QUY TẮC CỐT LÕI:
- * 1. Mỗi Tên + CCCD chỉ được liên kết 1 tag duy nhất (1 Zalo UID duy nhất).
- * 2. Mỗi tài khoản Zalo chỉ được nhận 1 tag phòng duy nhất.
+ * 1. GATEKEEPER 2 YẾU TỐ: Bắt buộc phải có cả Họ Tên VÀ Số CCCD hợp lệ thì mới tiến hành xác thực.
+ * 2. Mỗi Tên + CCCD chỉ được liên kết 1 tag duy nhất (1 Zalo UID duy nhất).
+ * 3. Mỗi tài khoản Zalo chỉ được nhận 1 tag phòng duy nhất.
  */
 export async function handleCsvTenantClaim(
     userText: string,
@@ -229,9 +267,10 @@ export async function handleCsvTenantClaim(
 
     let targetCccd = cccdInText;
     let candidateName = "";
+    const isAwaitingName = session.pendingTenantVerification?.step === "AWAIT_NAME";
 
     // 1. Kiểm tra trạng thái chờ nhập tên từ hội thoại trước (AWAIT_NAME)
-    if (!targetCccd && session.pendingTenantVerification?.step === "AWAIT_NAME") {
+    if (!targetCccd && isAwaitingName) {
         targetCccd = session.pendingTenantVerification.cccd;
         candidateName = userText.trim();
     } else if (targetCccd) {
@@ -244,6 +283,31 @@ export async function handleCsvTenantClaim(
     }
 
     const cleanCccd = targetCccd.replace(/\D/g, "");
+    const hasCccdKw = hasExplicitCccdKeyword(userText);
+    const hasValidName = isValidFullName(candidateName);
+
+    // GATEKEEPER TIỀN DUYỆT TIN NHẮN (TIẾT KIỆM API TUYỆT ĐỐI):
+    // Nếu tin nhắn KHÔNG có từ khóa CCCD rõ ràng, KHÔNG có Tên hợp lệ và KHÔNG ở trạng thái chờ:
+    // -> Đây là tin nhắn thông thường chứa chuỗi số (STK ngân hàng, mã đơn, công tơ...). Bỏ qua hoàn toàn (0 API calls).
+    if (!isAwaitingName && !hasCccdKw && !hasValidName) {
+        return { handled: false };
+    }
+
+    // BƯỚC 1: NẾU NGƯỜI DÙNG CHỈ MỚI GỬI SỐ CCCD MÀ CHƯA CÓ HỌ VÀ TÊN:
+    // -> Lưu CCCD vào session và hỏi Tên trước, TUYỆT ĐỐI KHÔNG GỌI LARK BASE API!
+    if (!hasValidName) {
+        session.pendingTenantVerification = {
+            cccd: cleanCccd,
+            step: "AWAIT_NAME",
+        };
+        console.log(`[tenantCsvService] 🛡️ Gatekeeper: Đã ghi nhận CCCD ${cleanCccd}. Yêu cầu cư dân gửi Họ Tên để đối soát (0 API calls).`);
+        return {
+            handled: true,
+            replyText: `Dạ, Quản gia AI đã nhận số CCCD ${cleanCccd}.\n\nĐể kích hoạt quyền cư dân tự động mở cửa, bạn vui lòng gửi thêm **Họ và tên** của bạn (đúng theo hợp đồng thuê phòng) nhé!`,
+        };
+    }
+
+    // BƯỚC 2: ĐÃ CÓ ĐỦ CẢ HỌ TÊN VÀ SỐ CCCD HỢP LỆ!
     const tenants = loadTenantsFromCsv();
 
     if (tenants.length === 0) {
@@ -254,13 +318,17 @@ export async function handleCsvTenantClaim(
         };
     }
 
-    // 2. Tra cứu CCCD trong CSV
+    // 2. Tra cứu CCCD trong CSV (Offline 0ms, 0 API calls)
     const matchedTenant = tenants.find((t) => t.cccd === cleanCccd);
 
     if (!matchedTenant) {
+        // Nếu không có trong CSV nhưng bật đồng bộ Lark Base -> Cho phép fallback sang Lark Base
+        if (process.env.ENABLE_LARK_SYNC === "true") {
+            return { handled: false };
+        }
         return {
             handled: true,
-            replyText: `⚠️ Không tìm thấy hồ sơ cư dân tương ứng với số CCCD ${cleanCccd} trong hệ thống tòa nhà.\n\nBạn vui lòng kiểm tra lại số CCCD hoặc liên hệ Ban Quản lý để được hỗ trợ nhé:\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`,
+            replyText: `⚠️ Không tìm thấy hồ sơ cư dân tương ứng với số CCCD ${cleanCccd} trong danh bạ tòa nhà.\n\nBạn vui lòng kiểm tra lại số CCCD hoặc liên hệ Ban Quản lý để được hỗ trợ nhé:\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`,
         };
     }
 
