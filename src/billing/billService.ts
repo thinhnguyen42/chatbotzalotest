@@ -173,10 +173,7 @@ export function formatBillNotification(bill: BillRecord): string {
         `━━━━━━━━━━━━━━━━━━`,
         `💰 TỔNG CỘNG THANH TOÁN: ${num(bill.totalAmount)} đ`,
         bill.billingPeriod ? `📅 Kỳ thanh toán: ${bill.billingPeriod}` : `📅 Kỳ thanh toán: Tháng ${new Date().getMonth() + 1}`,
-        bill.dueDate ? `⏰ Hạn thanh toán: Trước ngày ${bill.dueDate}` : `⏰ Hạn thanh toán: Trước ngày 05 hàng tháng`,
-        `━━━━━━━━━━━━━━━━━━`,
-        `📌 Hướng dẫn thanh toán:`,
-        `Quý cư dân mở ứng dụng Ngân hàng quét mã QR đính kèm bên dưới để thanh toán nhanh (đã tự động điền sẵn số tiền và nội dung chuyển khoản).`
+        bill.dueDate ? `⏰ Hạn thanh toán: Trước ngày ${bill.dueDate}` : `⏰ Hạn thanh toán: Trước ngày 05 hàng tháng`
     );
 
     return lines.join("\n");
