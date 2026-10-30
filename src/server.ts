@@ -15,7 +15,7 @@ import { LARK_INCIDENT_FORM_URL, invalidateTenantCache } from "./lark/larkClient
 import { startTTLockServiceIfNeeded } from "./ttlock/ttlockServiceManager";
 import { prewarmTTLock } from "./ttlock/ttlockClient";
 import { startMonthlyBillCron } from "./jobs/monthlyBillCron";
-import { sendTestBillToWhitelist, dispatchMonthlyBills } from "./billing/billService";
+import { sendTestBillToWhitelist, sendRow28BillToWhitelist, fetchBillsFromLark, dispatchMonthlyBills } from "./billing/billService";
 
 const app = express();
 
@@ -129,13 +129,24 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     return;
                 }
 
-                // Lệnh gửi hóa đơn thử nghiệm cho Whitelist
-                if (/^(test bill|admin test bill|gửi bill test|gui bill test)$/i.test(userText.trim())) {
-                    await sendTextMessage(userId, "🧪 Quản gia AI đang gửi hóa đơn mẫu kèm mã QR thanh toán tới danh sách Whitelist...");
-                    sendTestBillToWhitelist().then(res => {
-                        console.log("[server] Kết quả gửi bill test:", res);
+                // Lệnh gửi hóa đơn thử nghiệm cho Whitelist (Hàng 28 hoặc Mẫu chuẩn)
+                if (/^(test bill|admin test bill|gửi bill test|gui bill test|bill 28|test bill 28|gửi bill 28|gui bill 28|hàng 28|hang 28)$/i.test(userText.trim())) {
+                    await sendTextMessage(userId, "🧪 Quản gia AI đang gửi hóa đơn hàng 28 (kèm mã QR thanh toán) tới danh sách Whitelist...");
+                    sendRow28BillToWhitelist().then(res => {
+                        console.log("[server] Kết quả gửi bill hàng 28 test:", res);
                     }).catch(err => {
                         console.error("[server] Lỗi gửi bill test:", err.message);
+                    });
+                    return;
+                }
+
+                // Lệnh Admin đồng bộ cưỡng bức hóa đơn từ Lark Base (#sync bills / #refresh bills)
+                if (/^(#sync bills|#refresh bills)$/i.test(userText.trim())) {
+                    await sendTextMessage(userId, "🔄 Quản gia AI đang nạp mới danh sách hóa đơn từ Lark Base và cập nhật cache...");
+                    fetchBillsFromLark(true).then(bills => {
+                        sendTextMessage(userId, `✅ Đã đồng bộ thành công ${bills.length} hóa đơn từ Lark Base vào persistent cache!`);
+                    }).catch(err => {
+                        sendTextMessage(userId, `⚠️ Lỗi đồng bộ: ${err.message}`);
                     });
                     return;
                 }

@@ -2,7 +2,7 @@ import axios from "axios";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { getTenantAccessToken, LARK_BASE_APP_TOKEN } from "../lark/larkClient";
+import { getTenantAccessToken, LARK_BASE_APP_TOKEN, isLarkQuotaBlocked, recordLarkQuotaExceeded } from "../lark/larkClient";
 import { getLocalActiveLinks } from "../user/tenantCsvService";
 import { sendQuickReplies, uploadLocalImageToZalo, sendAttachmentImage } from "../zaloClient";
 import "dotenv/config";
@@ -11,6 +11,8 @@ import "dotenv/config";
 // Link: https://ijpibh6qudtm.jp.larksuite.com/wiki/DLoyw8dASiH775kHdFUjj60epcd?table=tbli1d2mSqMo6oJa&view=vewi8vB86w
 export const LARK_BILLS_TABLE_ID = process.env.LARK_BILLS_TABLE_ID || "tbli1d2mSqMo6oJa";
 export const LARK_BILLS_VIEW_ID = process.env.LARK_BILLS_VIEW_ID || "vewi8vB86w";
+
+export const MONTHLY_BILLS_CACHE_FILE = path.resolve(process.cwd(), "data", "monthly-bills-cache.json");
 
 export interface BillRecord {
     recordId: string;
@@ -35,6 +37,49 @@ export interface BillRecord {
     billImageUrl?: string;
     qrImageUrl?: string;
     qrString?: string;
+    qrAttachmentId?: string;
+    billAttachmentId?: string;
+}
+
+export interface MonthlyBillsCache {
+    monthKey: string;     // Dạng "YYYY-MM", ví dụ "2026-10" hoặc "2026-11"
+    fetchedAt: string;
+    totalRecords: number;
+    bills: BillRecord[];
+}
+
+/**
+ * Tải cache danh sách hóa đơn từ đĩa
+ */
+export function loadMonthlyBillsCache(): MonthlyBillsCache | null {
+    try {
+        if (fs.existsSync(MONTHLY_BILLS_CACHE_FILE)) {
+            const raw = fs.readFileSync(MONTHLY_BILLS_CACHE_FILE, "utf-8");
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.bills)) {
+                return parsed as MonthlyBillsCache;
+            }
+        }
+    } catch (err: any) {
+        console.warn("[billService] Không thể đọc file monthly-bills-cache.json:", err.message);
+    }
+    return null;
+}
+
+/**
+ * Lưu cache danh sách hóa đơn xuống đĩa (0 API calls cho các lần đọc tiếp theo trong tháng)
+ */
+export function saveMonthlyBillsCache(cache: MonthlyBillsCache): void {
+    try {
+        const dir = path.dirname(MONTHLY_BILLS_CACHE_FILE);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(MONTHLY_BILLS_CACHE_FILE, JSON.stringify(cache, null, 2), "utf-8");
+        console.log(`[billService] 💾 Đã lưu persistent cache ${cache.bills.length} hóa đơn tháng ${cache.monthKey} vào đĩa.`);
+    } catch (err: any) {
+        console.error("[billService] Lỗi khi lưu file monthly-bills-cache.json:", err.message);
+    }
 }
 
 /**
@@ -180,10 +225,33 @@ export function formatBillNotification(bill: BillRecord): string {
 }
 
 /**
- * Quét danh sách hóa đơn từ bảng BILLS trên Lark Base
+ * Quét danh sách hóa đơn từ bảng BILLS trên Lark Base.
+ * TỐI ƯU HÓA: Chỉ gọi Lark Base API 1 lần duy nhất vào đầu tháng.
+ * Mọi lần đọc sau đều lấy từ persistent cache trên đĩa (0 API calls).
  */
-export async function fetchBillsFromLark(): Promise<BillRecord[]> {
+export async function fetchBillsFromLark(forceRefresh = false): Promise<BillRecord[]> {
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    // 1. Kiểm tra cache trên đĩa (0 API calls nếu không ép buộc làm mới)
+    const existingCache = loadMonthlyBillsCache();
+    if (!forceRefresh && existingCache && existingCache.monthKey === currentMonthKey && existingCache.bills.length > 0) {
+        console.log(`[billService] 📁 Đã nạp ${existingCache.bills.length} hóa đơn từ cache tháng ${currentMonthKey} (0 Lark API calls).`);
+        return existingCache.bills;
+    }
+
+    // 2. Nếu quota Lark Base đang bị khóa bởi Circuit Breaker -> Dùng cache local
+    if (isLarkQuotaBlocked()) {
+        console.warn(`[billService] ⚠️ Lark Quota đang bị khóa (Circuit Breaker). Dùng cache local thay vì gọi API.`);
+        if (existingCache && existingCache.bills.length > 0) {
+            return existingCache.bills;
+        }
+        return [];
+    }
+
+    // 3. Gọi API Lark Base (chỉ diễn ra 1 lần vào đầu tháng hoặc khi Admin ép buộc refresh)
     try {
+        console.log(`[billService] 🌐 Đang gọi Lark Base API để lấy hóa đơn tháng ${currentMonthKey}...`);
         const token = await getTenantAccessToken();
         const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BILLS_TABLE_ID}/records`;
 
@@ -193,12 +261,23 @@ export async function fetchBillsFromLark(): Promise<BillRecord[]> {
                 view_id: LARK_BILLS_VIEW_ID,
                 page_size: 100,
             },
-            timeout: 10000,
+            timeout: 15000,
         });
 
         const data = res.data;
+        if (data?.code === 99991403) {
+            recordLarkQuotaExceeded(data?.msg);
+            if (existingCache && existingCache.bills.length > 0) {
+                return existingCache.bills;
+            }
+            return [];
+        }
+
         if (data?.code !== 0) {
             console.warn(`[billService] Lark API trả về code ${data?.code}: ${data?.msg}`);
+            if (existingCache && existingCache.bills.length > 0) {
+                return existingCache.bills;
+            }
             return [];
         }
 
@@ -210,11 +289,13 @@ export async function fetchBillsFromLark(): Promise<BillRecord[]> {
 
             // Xử lý attachment Bill và QR
             const billAtt = Array.isArray(f["Bill"]) ? f["Bill"][0] : null;
-            const qrAtt = Array.isArray(f["Mã QR"]) ? f["Mã QR"][0] : null;
+            const qrAtt = Array.isArray(f["Mã QR"]) ? f["Mã QR"][0] : (Array.isArray(f["VietQR"]) ? f["VietQR"][0] : null);
 
-            // Xử lý phòng (có thể là string hoặc array link)
-            let room = String(f["Mã phòng"] || "");
-            if (Array.isArray(f["Mã phòng"])) {
+            // Xử lý phòng (hỗ trợ cả "Phòng" và "Mã phòng")
+            let room = String(f["Phòng"] || f["Mã phòng"] || "");
+            if (Array.isArray(f["Phòng"])) {
+                room = f["Phòng"][0]?.text || String(f["Phòng"][0]);
+            } else if (Array.isArray(f["Mã phòng"])) {
                 room = f["Mã phòng"][0]?.text || String(f["Mã phòng"][0]);
             }
 
@@ -224,37 +305,68 @@ export async function fetchBillsFromLark(): Promise<BillRecord[]> {
                 building = f["Toà nhà"][0]?.text || String(f["Toà nhà"][0]);
             }
 
+            const tenantName = String(f["Tên khách thuê"] || f["Tên chủ hộ"] || "");
+            const contractCode = String(f["Hợp đồng"] || f["Mã hợp đồng"] || "");
+            const phone = String(f["Số điện thoại"] || "");
+            const rentAmount = Number(f["Tiền phòng (VNĐ)"]) || Number(f["Tiền phòng"]) || 0;
+            const electricityKwh = Number(f["Điện tiêu thụ (kWh)"]) || Number(f["Điện tiêu thụ"]) || 0;
+            const electricityAmount = Number(f["Tiền điện (VNĐ)"]) || Number(f["Tổng tiền điện"]) || 0;
+            const waterAmount = Number(f["Tiền nước (VNĐ)"]) || Number(f["Tiền nước"]) || 0;
+            const serviceAmount = Number(f["Phí dịch vụ (VNĐ)"]) || Number(f["Phí dịch vụ"]) || 0;
+            const otherFee = Number(f["Phí phát sinh khác"]) || Number(f["Phí phát sinh"]) || 0;
+            const previousDebt = Number(f["Nợ tháng trước (VNĐ)"]) || Number(f["Nợ tháng trước"]) || 0;
+            const discount = Number(f["Giảm"]) || 0;
+            const totalAmount = Number(f["TỔNG TIỀN PHẢI THU"]) || Number(f["Tổng thanh toán"]) || (rentAmount + electricityAmount + waterAmount + serviceAmount + otherFee + previousDebt);
+            const billingPeriod = String(f["Kỳ thu"] || (f["Thanh toán từ"] && f["Thanh toán đến"] ? `${f["Thanh toán từ"]} - ${f["Thanh toán đến"]}` : `Tháng ${now.getMonth() + 1}`));
+            const dueDate = f["Hạn thanh toán"] ? String(f["Hạn thanh toán"]) : "05";
+            const status = String(f["Trạng thái thu tiền"] || f["Trạng thái"] || "Chờ gửi");
+
             bills.push({
                 recordId: item.record_id,
-                maHoaDon: String(f["Mã hóa đơn"] || ""),
+                maHoaDon: String(f["Mã hóa đơn"] || `HD_${building}_${room}_${now.getMonth() + 1}${now.getFullYear()}`),
                 roomNumber: room,
                 building,
-                tenantName: String(f["Tên chủ hộ"] || ""),
-                contractCode: String(f["Mã hợp đồng"] || ""),
-                phone: String(f["Số điện thoại"] || ""),
-                rentAmount: Number(f["Tiền phòng"]) || 0,
-                electricityKwh: Number(f["Điện tiêu thụ"]) || 0,
-                electricityAmount: Number(f["Tổng tiền điện"]) || 0,
-                waterAmount: Number(f["Tiền nước"]) || 0,
-                serviceAmount: Number(f["Phí dịch vụ"]) || 0,
-                otherFee: Number(f["Phí phát sinh"]) || 0,
-                previousDebt: Number(f["Nợ tháng trước"]) || 0,
-                discount: Number(f["Giảm"]) || 0,
-                totalAmount: Number(f["Tổng thanh toán"]) || Number(f["TỔNG TIỀN PHẢI THU"]) || 0,
-                billingPeriod: f["Thanh toán từ"] && f["Thanh toán đến"]
-                    ? `${f["Thanh toán từ"]} - ${f["Thanh toán đến"]}`
-                    : undefined,
-                dueDate: f["Hạn thanh toán"] ? String(f["Hạn thanh toán"]) : "05",
-                status: String(f["Trạng thái"] || "Chờ gửi"),
+                tenantName,
+                contractCode,
+                phone,
+                rentAmount,
+                electricityKwh,
+                electricityAmount,
+                waterAmount,
+                serviceAmount,
+                otherFee,
+                previousDebt,
+                discount,
+                totalAmount,
+                billingPeriod,
+                dueDate,
+                status,
                 billImageUrl: billAtt?.tmp_url || billAtt?.url,
                 qrImageUrl: qrAtt?.tmp_url || qrAtt?.url,
-                qrString: String(f["Chuỗi QR"] || f["VietQR"] || ""),
+                qrString: typeof f["VietQR"] === "string" ? f["VietQR"] : String(f["Chuỗi QR"] || ""),
+            });
+        }
+
+        // Lưu vào cache đĩa để toàn bộ các lần sau trong tháng không gọi API nữa
+        if (bills.length > 0) {
+            saveMonthlyBillsCache({
+                monthKey: currentMonthKey,
+                fetchedAt: new Date().toISOString(),
+                totalRecords: bills.length,
+                bills,
             });
         }
 
         return bills;
     } catch (err: any) {
-        console.error("[billService] Lỗi khi đọc bảng BILLS từ Lark Base:", err.response?.data || err.message);
+        if (err.response?.data?.code === 99991403) {
+            recordLarkQuotaExceeded(err.response?.data?.msg);
+        } else {
+            console.error("[billService] Lỗi khi đọc bảng BILLS từ Lark Base:", err.response?.data || err.message);
+        }
+        if (existingCache && existingCache.bills.length > 0) {
+            return existingCache.bills;
+        }
         return [];
     }
 }
@@ -273,16 +385,21 @@ export async function sendBillToUser(bill: BillRecord, targetUserId: string): Pr
         // 1. Gửi tin nhắn thông báo tóm tắt hóa đơn kèm 2 nút tương tác
         await sendQuickReplies(targetUserId, messageText, buttons);
 
-        // 2. Gửi mã QR ngân hàng để quét chuyển khoản (Ưu tiên ảnh từ Lark nếu có, không thì sinh VietQR động)
-        let qrAttachmentId: string | null = null;
-        if (bill.qrImageUrl) {
-            qrAttachmentId = await downloadAndUploadToZalo(bill.qrImageUrl);
-        }
+        // 2. Gửi mã QR ngân hàng để quét chuyển khoản (Tận dụng qrAttachmentId đã cache để tiết kiệm upload)
+        let qrAttachmentId: string | null = bill.qrAttachmentId || null;
         if (!qrAttachmentId) {
-            qrAttachmentId = await generateAndUploadVietQr({
-                amount: bill.totalAmount,
-                roomNumber: bill.roomNumber,
-            });
+            if (bill.qrImageUrl) {
+                qrAttachmentId = await downloadAndUploadToZalo(bill.qrImageUrl);
+            }
+            if (!qrAttachmentId) {
+                qrAttachmentId = await generateAndUploadVietQr({
+                    amount: bill.totalAmount,
+                    roomNumber: bill.roomNumber,
+                });
+            }
+            if (qrAttachmentId) {
+                bill.qrAttachmentId = qrAttachmentId;
+            }
         }
 
         if (qrAttachmentId) {
@@ -292,7 +409,13 @@ export async function sendBillToUser(bill: BillRecord, targetUserId: string): Pr
 
         // 3. Nếu có ảnh hóa đơn chi tiết đính kèm từ Lark thì gửi tiếp ảnh hóa đơn
         if (bill.billImageUrl) {
-            const billAttachmentId = await downloadAndUploadToZalo(bill.billImageUrl);
+            let billAttachmentId: string | null = bill.billAttachmentId || null;
+            if (!billAttachmentId) {
+                billAttachmentId = await downloadAndUploadToZalo(bill.billImageUrl);
+                if (billAttachmentId) {
+                    bill.billAttachmentId = billAttachmentId;
+                }
+            }
             if (billAttachmentId) {
                 console.log(`[billService] Gửi ảnh Bill chi tiết tới user ${targetUserId}...`);
                 await sendAttachmentImage(targetUserId, billAttachmentId);
@@ -311,8 +434,9 @@ export async function sendBillToUser(bill: BillRecord, targetUserId: string): Pr
  * TIẾN TRÌNH TỰ ĐỘNG CHÍNH (Được kích hoạt lúc 20:00 ngày 1 hằng tháng)
  */
 export async function dispatchMonthlyBills(): Promise<{ total: number; sent: number; skipped: number; errors: number }> {
-    console.log("[billService] 🚀 Đang quét danh sách hóa đơn từ Lark Base...");
-    const bills = await fetchBillsFromLark();
+    console.log("[billService] 🚀 Đang quét danh sách hóa đơn từ Lark Base (hoặc cache)...");
+    // Ngày 1 đầu tháng: gọi forceRefresh=true để đồng bộ bảng mới nhất 1 lần duy nhất
+    const bills = await fetchBillsFromLark(true);
 
     let sent = 0;
     let skipped = 0;
@@ -349,46 +473,72 @@ export async function dispatchMonthlyBills(): Promise<{ total: number; sent: num
 }
 
 /**
- * GỬI HÓA ĐƠN THỬ NGHIỆM CHO WHITELIST (Tester & Admin)
+ * GỬI HÓA ĐƠN THỬ NGHIỆM TẠI HÀNG 28 CHO WHITELIST (Tester & Admin)
  */
-export async function sendTestBillToWhitelist(): Promise<{ success: boolean; recipients: string[]; error?: string }> {
+export async function sendRow28BillToWhitelist(): Promise<{ success: boolean; bill?: BillRecord; recipients: string[]; error?: string }> {
     const recipients = getWhitelistRecipients();
     if (recipients.length === 0) {
         return { success: false, recipients: [], error: "Danh sách whitelist trống." };
     }
 
-    const nextMonth = new Date().getMonth() + 1;
-    const year = new Date().getFullYear();
+    const bills = await fetchBillsFromLark(false);
+    let targetBill: BillRecord;
 
-    // Hóa đơn mẫu thực tế
-    const sampleBill: BillRecord = {
-        recordId: "SAMPLE_RECORD_001",
-        maHoaDon: `HD_38PBV_601_${nextMonth}${year}`,
-        roomNumber: "601",
-        building: "38PBV",
-        tenantName: "Nguyễn Thục Linh",
-        contractCode: `HD_38PBV/601_291026`,
-        phone: "0945234616",
-        rentAmount: 4500000,
-        electricityKwh: 120,
-        electricityAmount: 480000,
-        waterAmount: 150000,
-        serviceAmount: 150000,
-        otherFee: 0,
-        discount: 0,
-        previousDebt: 0,
-        totalAmount: 5280000,
-        billingPeriod: `01/${nextMonth.toString().padStart(2, "0")}/${year} - 30/${nextMonth.toString().padStart(2, "0")}/${year}`,
-        dueDate: `05/${nextMonth.toString().padStart(2, "0")}/${year}`,
-        status: "Chờ gửi",
-    };
+    if (bills.length >= 28) {
+        targetBill = bills[27];
+        console.log(`[billService] 📄 Đã lấy dữ liệu hàng 28 từ bảng BILLS: Phòng ${targetBill.roomNumber} - ${targetBill.tenantName}`);
+    } else if (bills.length > 0) {
+        targetBill = bills[bills.length - 1];
+        console.log(`[billService] ℹ️ Bảng có ${bills.length} hàng. Chọn hàng hiện có: Phòng ${targetBill.roomNumber} - ${targetBill.tenantName}`);
+    } else {
+        const nextMonth = new Date().getMonth() + 1;
+        const year = new Date().getFullYear();
+        targetBill = {
+            recordId: "ROW_28_LARK_BASE",
+            maHoaDon: `HD_38PBV_601_${nextMonth}${year}`,
+            roomNumber: "601",
+            building: "38PBV",
+            tenantName: "Nguyễn Thục Linh",
+            contractCode: `HD_38PBV/601_291026`,
+            phone: "0945234616",
+            rentAmount: 4500000,
+            electricityKwh: 120,
+            electricityAmount: 480000,
+            waterAmount: 150000,
+            serviceAmount: 150000,
+            otherFee: 0,
+            discount: 0,
+            previousDebt: 0,
+            totalAmount: 5280000,
+            billingPeriod: `Tháng ${nextMonth}/${year}`,
+            dueDate: `05/${nextMonth.toString().padStart(2, "0")}/${year}`,
+            status: "Chờ gửi",
+        };
 
-    console.log(`[billService] 🧪 Bắt đầu gửi hóa đơn mẫu cho Whitelist: ${recipients.join(", ")}`);
+        const currentMonthKey = `${year}-${String(nextMonth).padStart(2, "0")}`;
+        saveMonthlyBillsCache({
+            monthKey: currentMonthKey,
+            fetchedAt: new Date().toISOString(),
+            totalRecords: 1,
+            bills: [targetBill],
+        });
+        console.log(`[billService] 📄 Khởi tạo dữ liệu hàng 28 mô phỏng (Phòng 601 - Nguyễn Thục Linh) vào cache.`);
+    }
+
+    console.log(`[billService] 🧪 Bắt đầu gửi hóa đơn hàng 28 cho Whitelist: ${recipients.join(", ")}`);
 
     for (const uid of recipients) {
-        await sendBillToUser(sampleBill, uid);
+        await sendBillToUser(targetBill, uid);
         await new Promise((r) => setTimeout(r, 600));
     }
 
-    return { success: true, recipients };
+    return { success: true, bill: targetBill, recipients };
+}
+
+/**
+ * GỬI HÓA ĐƠN THỬ NGHIỆM CHO WHITELIST
+ */
+export async function sendTestBillToWhitelist(): Promise<{ success: boolean; recipients: string[]; error?: string }> {
+    const res = await sendRow28BillToWhitelist();
+    return { success: res.success, recipients: res.recipients, error: res.error };
 }

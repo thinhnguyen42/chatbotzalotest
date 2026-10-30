@@ -5,6 +5,7 @@ import {
     getContractByCccd,
     getContractByPhone,
     markLinkRequestAsProcessed,
+    isLarkQuotaBlocked,
 } from "../lark/larkClient";
 import {
     processApprovedLink,
@@ -73,6 +74,10 @@ function saveActiveLinks(map: Map<string, ActiveTenantLink>): void {
  * 2. TỰ ĐỘNG GỠ TAG & HỦY QUYỀN CƯ DÂN khi Admin bấm "Từ chối" hoặc xóa dòng trên Lark Base!
  */
 export async function pollApprovedLinkRequests(): Promise<number> {
+    if (isLarkQuotaBlocked()) {
+        return 0;
+    }
+
     if (isQuietHours()) {
         const now = Date.now();
         // Ban đêm (23h-7h) giãn chu kỳ ra ít nhất 60 phút mới quét 1 lần để tiết kiệm API
@@ -237,7 +242,7 @@ export async function pollApprovedLinkRequests(): Promise<number> {
  * Khởi động tiến trình Poller định kỳ (mặc định 15 phút = 900,000ms để tối ưu API cho nhà trọ ~16 phòng)
  */
 export function startLinkApprovalPoller(intervalMs?: number): NodeJS.Timeout {
-    const finalInterval = intervalMs ?? (Number(process.env.LINK_APPROVAL_POLL_INTERVAL_MS) || 15 * 60 * 1000);
+    const finalInterval = intervalMs ?? (Number(process.env.LINK_APPROVAL_POLL_INTERVAL_MS) || 6 * 60 * 60 * 1000);
     console.log(`[linkApprovalPoller] ✅ Đã khởi động Poller kiểm tra duyệt/gỡ hồ sơ Lark Base (chu kỳ: ${finalInterval / 1000}s)`);
     // Chạy thử lần đầu ngay khi khởi động
     pollApprovedLinkRequests().catch((e) => console.error("[linkApprovalPoller] Lỗi lần quét đầu:", e.message));

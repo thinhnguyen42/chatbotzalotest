@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { ADMIN_ZALO_USER_ID } from "../config/adminConfig";
-import { getContractByPhone, getContractByCccd, createLinkRequest, findApprovedLinkByZaloUserId } from "../lark/larkClient";
+import { getContractByPhone, getContractByCccd, createLinkRequest, findApprovedLinkByZaloUserId, isLarkQuotaBlocked } from "../lark/larkClient";
 import { getSession, updateSessionContext } from "../memory/sessionMemory";
 
 export type UserRole = "ADMIN" | "PRIMARY_LEASEHOLDER" | "CO_RESIDENT" | "UNTAGGED_GUEST";
@@ -23,7 +23,16 @@ interface CachedRole {
 }
 
 const roleCache = new Map<string, CachedRole>();
-const ROLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 giờ (được xóa tức thì khi Admin gỡ tag hoặc hủy duyệt)
+const ROLE_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 giờ
+const GUEST_CACHE_TTL_MS = 60 * 60 * 1000; // 1 giờ cho UNTAGGED_GUEST để tránh gọi Lark lặp lại trên mỗi tin nhắn
+
+// Bộ đệm giới hạn tần suất gửi yêu cầu xác thực CCCD/SĐT (15 phút mỗi user)
+const claimThrottleMap = new Map<string, number>();
+const CLAIM_THROTTLE_MS = 15 * 60 * 1000;
+
+// Bộ nhớ đệm tra cứu CCCD không tồn tại (tránh query Lark liên tục cho số rác)
+const unknownCccdCache = new Map<string, number>();
+const UNKNOWN_CCCD_TTL_MS = 2 * 60 * 60 * 1000; // 2 giờ
 
 export function setCachedRole(zaloUserId: string, ctx: UserRoleContext): void {
     roleCache.set(zaloUserId, {
@@ -200,11 +209,16 @@ export async function resolveUserRole(zaloUserId: string): Promise<UserRoleConte
         console.warn("[userRoleService] Lỗi tra cứu vai trò từ Lark Base:", err.message);
     }
 
-    // 5. Mặc định là khách chưa định danh
-    return {
+    // 5. Mặc định là khách chưa định danh - cache 1 giờ để tránh query lặp lại trên từng tin nhắn
+    const guestCtx: UserRoleContext = {
         zaloUserId,
         role: "UNTAGGED_GUEST",
     };
+    roleCache.set(zaloUserId, {
+        ctx: guestCtx,
+        expiresAt: Date.now() + GUEST_CACHE_TTL_MS,
+    });
+    return guestCtx;
 }
 
 /**
@@ -221,19 +235,49 @@ export async function handleCccdClaim(
         return { handled: false };
     }
 
+    // 1. KIỂM TRA RATE LIMIT (Giới hạn 15 phút mỗi user)
+    const lastClaim = claimThrottleMap.get(zaloUserId);
+    if (lastClaim && Date.now() - lastClaim < CLAIM_THROTTLE_MS) {
+        const remainingMinutes = Math.ceil((CLAIM_THROTTLE_MS - (Date.now() - lastClaim)) / 60000);
+        console.log(`[userRoleService] ⏳ User ${zaloUserId} gửi claim CCCD quá nhanh (còn ${remainingMinutes}p cooldown). Chặn gọi Lark API.`);
+        return {
+            handled: true,
+            replyText: "Quản gia AI đã ghi nhận yêu cầu xác thực của bạn trước đó rồi ạ. Hồ sơ đang được Ban Quản lý xử lý, bạn vui lòng chờ nhé!",
+        };
+    }
+
+    // 2. KIỂM TRA CACHE SỐ CCCD KHÔNG TỒN TẠI
+    const unknownExp = unknownCccdCache.get(cccd);
+    if (unknownExp && Date.now() < unknownExp) {
+        console.log(`[userRoleService] ⏭️ CCCD ${cccd} đã xác định không tồn tại (cache). Bỏ qua gọi Lark.`);
+        return { handled: false };
+    }
+
+    // 3. NẾU LARK BASE SYNC ĐANG TẮT HOẶC QUOTA BỊ KHÓA -> Trả lời xác nhận offline
+    if (process.env.ENABLE_LARK_SYNC !== "true" || isLarkQuotaBlocked()) {
+        claimThrottleMap.set(zaloUserId, Date.now());
+        console.log(`[userRoleService] ℹ️ Lark Sync tắt hoặc Quota hết. Ghi nhận claim offline cho user ${zaloUserId}.`);
+        return {
+            handled: true,
+            replyText: "Quản gia AI đã ghi nhận yêu cầu xác thực CCCD của bạn. Ban Quản lý sẽ kiểm tra hồ sơ và kích hoạt quyền cư dân sớm nhất nhé!",
+        };
+    }
+
     try {
         const contract = await getContractByCccd(cccd);
         if (!contract) {
-            // Không tìm thấy hồ sơ CCCD -> Trả về handled: false để không chặn luồng chat của khách
+            // Không tìm thấy hồ sơ CCCD -> Cache lại để không query lại số này
+            unknownCccdCache.set(cccd, Date.now() + UNKNOWN_CCCD_TTL_MS);
             return { handled: false };
         }
+
+        claimThrottleMap.set(zaloUserId, Date.now());
 
         // BẢO VỆ CHỐNG GHI ĐÈ: Nếu hồ sơ này đã được liên kết với một Zalo User ID khác
         if (contract.zaloUserId) {
             console.log(
                 `[userRoleService] Cảnh báo: CCCD ${cccd} đã được liên kết với Zalo UID ${contract.zaloUserId}. Từ chối yêu cầu từ ${zaloUserId}.`
             );
-            // Vẫn trả lời bằng câu trung lập, không tiết lộ lý do chi tiết để tránh dò CCCD
             return {
                 handled: true,
                 replyText: "Đã ghi nhận yêu cầu, vui lòng chờ Ban quản lý xác nhận.",
@@ -290,11 +334,32 @@ export async function handlePhoneClaim(
         return { handled: false };
     }
 
+    // 2.1 Kiểm tra Rate Limit cho SĐT
+    const lastClaim = claimThrottleMap.get(zaloUserId);
+    if (lastClaim && Date.now() - lastClaim < CLAIM_THROTTLE_MS) {
+        console.log(`[userRoleService] ⏳ User ${zaloUserId} gửi claim SĐT quá nhanh. Chặn gọi Lark API.`);
+        return {
+            handled: true,
+            replyText: "Quản gia AI đã ghi nhận yêu cầu xác thực của bạn trước đó rồi ạ. Hồ sơ đang được Ban Quản lý xử lý, bạn vui lòng chờ nhé!",
+        };
+    }
+
+    // 2.2 Nếu Lark Sync tắt hoặc Quota hết -> Phản hồi offline
+    if (process.env.ENABLE_LARK_SYNC !== "true" || isLarkQuotaBlocked()) {
+        claimThrottleMap.set(zaloUserId, Date.now());
+        return {
+            handled: true,
+            replyText: "Quản gia AI đã ghi nhận số điện thoại của bạn. Ban Quản lý sẽ đối soát và phê duyệt hồ sơ sớm nhất nhé!",
+        };
+    }
+
     try {
         const contract = await getContractByPhone(phone);
         if (!contract) {
             return { handled: false };
         }
+
+        claimThrottleMap.set(zaloUserId, Date.now());
 
         if (contract.zaloUserId) {
             console.log(

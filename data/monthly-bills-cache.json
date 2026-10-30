@@ -1,0 +1,28 @@
+{
+  "monthKey": "2026-10",
+  "fetchedAt": "2026-10-30T07:02:23.736Z",
+  "totalRecords": 1,
+  "bills": [
+    {
+      "recordId": "ROW_28_LARK_BASE",
+      "maHoaDon": "HD_38PBV_601_102026",
+      "roomNumber": "601",
+      "building": "38PBV",
+      "tenantName": "Nguyễn Thục Linh",
+      "contractCode": "HD_38PBV/601_291026",
+      "phone": "0945234616",
+      "rentAmount": 4500000,
+      "electricityKwh": 120,
+      "electricityAmount": 480000,
+      "waterAmount": 150000,
+      "serviceAmount": 150000,
+      "otherFee": 0,
+      "discount": 0,
+      "previousDebt": 0,
+      "totalAmount": 5280000,
+      "billingPeriod": "Tháng 10/2026",
+      "dueDate": "05/10/2026",
+      "status": "Chờ gửi"
+    }
+  ]
+}

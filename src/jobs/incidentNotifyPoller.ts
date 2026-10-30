@@ -1,4 +1,4 @@
-import { getNewIncidentRecords, markIncidentNotified, IncidentRecord } from "../lark/larkClient";
+import { getNewIncidentRecords, markIncidentNotified, IncidentRecord, isLarkQuotaBlocked } from "../lark/larkClient";
 import { notifyAdmin } from "../zaloClient";
 
 let isPolling = false;
@@ -43,6 +43,10 @@ function formatAdminIncidentNotification(incident: IncidentRecord): string {
  * Trả về số lượng sự cố đã thông báo.
  */
 export async function pollNewIncidents(): Promise<number> {
+    if (isLarkQuotaBlocked()) {
+        return 0;
+    }
+
     if (isQuietHours()) {
         const now = Date.now();
         // Ban đêm (23h-7h) giãn chu kỳ ra ít nhất 60 phút mới quét 1 lần để tiết kiệm API
@@ -107,7 +111,7 @@ export async function pollNewIncidents(): Promise<number> {
  * Khởi động polling định kỳ kiểm tra sự cố mới (mặc định 15 phút = 900,000ms để tối ưu API)
  */
 export function startIncidentNotifyPoller(intervalMs?: number): NodeJS.Timeout {
-    const finalInterval = intervalMs ?? (Number(process.env.INCIDENT_NOTIFY_POLL_INTERVAL_MS) || 15 * 60 * 1000);
+    const finalInterval = intervalMs ?? (Number(process.env.INCIDENT_NOTIFY_POLL_INTERVAL_MS) || 6 * 60 * 60 * 1000);
     console.log(`[incidentNotifyPoller] ✅ Đã khởi động Poller kiểm tra sự cố mới (chu kỳ: ${finalInterval / 1000}s)`);
 
     // Chạy thử lần đầu ngay khi khởi động (delay 5s để server ổn định)

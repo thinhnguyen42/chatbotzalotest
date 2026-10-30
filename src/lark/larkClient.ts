@@ -1,4 +1,6 @@
 import axios from "axios";
+import fs from "fs";
+import path from "path";
 import "dotenv/config";
 
 // Configuration from environment variables
@@ -90,11 +92,40 @@ interface MemoryCache<T> {
     expiresAt: number;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// QUOTA CIRCUIT BREAKER: Tự động ngắt kết nối Lark Base khi hết hạn ngạch tháng (99991403)
+// ─────────────────────────────────────────────────────────────────────────────
+let isLarkQuotaBlockedState = false;
+let quotaBlockedUntil = 0;
+
+export function recordLarkQuotaExceeded(reason?: string): void {
+    isLarkQuotaBlockedState = true;
+    const now = new Date();
+    // Tự động hồi phục vào ngày 1 tháng sau, hoặc tối thiểu 2 giờ sau
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 5, 0);
+    quotaBlockedUntil = Math.max(Date.now() + 2 * 60 * 60 * 1000, nextMonth.getTime());
+    console.warn(
+        `[larkClient] ⚠️ QUOTA EXCEEDED (99991403): Quota API Lark Base tháng này đã vượt mức!` +
+        ` Kích hoạt Circuit Breaker: Tự động dùng Local Cache & tenants.csv đến ${new Date(quotaBlockedUntil).toLocaleString("vi-VN")}. (${reason || "Quota limit"})`
+    );
+}
+
+export function isLarkQuotaBlocked(): boolean {
+    if (!isLarkQuotaBlockedState) return false;
+    if (Date.now() > quotaBlockedUntil) {
+        isLarkQuotaBlockedState = false;
+        console.log("[larkClient] 🔄 Circuit Breaker: Đã hết thời hạn block quota, mở lại kết nối Lark Base.");
+        return false;
+    }
+    return true;
+}
+
+const TENANT_CACHE_FILE = path.join(__dirname, "..", "..", "data", "lark-tenants-cache.json");
 let cachedTenants: MemoryCache<any[]> | null = null;
-const TENANT_CACHE_TTL_MS = 60 * 60 * 1000; // 60 phút cache danh sách cư dân
+const TENANT_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 giờ cache danh sách cư dân (giảm 96% API calls)
 
 let cachedLinkRequests: MemoryCache<any[]> | null = null;
-const LINK_REQUEST_CACHE_TTL_MS = 15 * 60 * 1000; // 15 phút cache danh sách yêu cầu liên kết
+const LINK_REQUEST_CACHE_TTL_MS = 60 * 60 * 1000; // 60 phút cache danh sách yêu cầu liên kết
 
 /**
  * Xóa cache bộ nhớ để ép buộc nạp mới từ Lark Base ở lần gọi tiếp theo
@@ -110,23 +141,81 @@ export function invalidateTenantCache(): void {
  * Lấy danh sách cư dân từ cache bộ nhớ (nếu còn hạn) hoặc gọi API Lark Base nạp lại
  */
 export async function getCachedTenantRecords(forceRefresh = false): Promise<any[]> {
+    // 1. Kiểm tra cache trong RAM
     if (!forceRefresh && cachedTenants && Date.now() < cachedTenants.expiresAt) {
         return cachedTenants.data;
     }
-    const token = await getTenantAccessToken();
-    const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_TENANTS_TABLE_ID}/records`;
-    const res = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { page_size: 100 },
-        timeout: 10000,
-    });
-    const items = res.data?.data?.items || [];
-    cachedTenants = {
-        data: items,
-        expiresAt: Date.now() + TENANT_CACHE_TTL_MS,
-    };
-    console.log(`[larkClient] 📦 Đã nạp và lưu cache ${items.length} cư dân từ bảng TENANTS (TTL: 60 phút).`);
-    return items;
+
+    // 2. Kiểm tra cache lưu trên đĩa (tái sử dụng qua các lần restart server, 0 API calls)
+    if (!forceRefresh && fs.existsSync(TENANT_CACHE_FILE)) {
+        try {
+            const raw = fs.readFileSync(TENANT_CACHE_FILE, "utf-8");
+            const parsed = JSON.parse(raw);
+            if (parsed?.data && parsed.expiresAt > Date.now()) {
+                cachedTenants = parsed;
+                console.log(`[larkClient] 📁 Đã tải ${parsed.data.length} cư dân từ cache đĩa (0 API calls).`);
+                return parsed.data;
+            }
+        } catch {}
+    }
+
+    // Nếu quota đang bị block -> trả về cache đĩa nếu có, không gọi API mạng
+    if (isLarkQuotaBlocked()) {
+        if (fs.existsSync(TENANT_CACHE_FILE)) {
+            try {
+                const parsed = JSON.parse(fs.readFileSync(TENANT_CACHE_FILE, "utf-8"));
+                return parsed.data || [];
+            } catch {}
+        }
+        return [];
+    }
+
+    // 3. Nếu chưa có hoặc ép buộc làm mới -> Gọi API Lark Base
+    try {
+        const token = await getTenantAccessToken();
+        const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_TENANTS_TABLE_ID}/records`;
+        const res = await axios.get(url, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: { page_size: 100 },
+            timeout: 10000,
+        });
+
+        if (res.data?.code === 99991403) {
+            recordLarkQuotaExceeded(res.data?.msg);
+            if (fs.existsSync(TENANT_CACHE_FILE)) {
+                try {
+                    const parsed = JSON.parse(fs.readFileSync(TENANT_CACHE_FILE, "utf-8"));
+                    return parsed.data || [];
+                } catch {}
+            }
+            return [];
+        }
+
+        const items = res.data?.data?.items || [];
+        cachedTenants = {
+            data: items,
+            expiresAt: Date.now() + TENANT_CACHE_TTL_MS,
+        };
+        try {
+            fs.mkdirSync(path.dirname(TENANT_CACHE_FILE), { recursive: true });
+            fs.writeFileSync(TENANT_CACHE_FILE, JSON.stringify(cachedTenants, null, 2), "utf-8");
+        } catch {}
+        console.log(`[larkClient] 📦 Đã nạp và lưu cache ${items.length} cư dân từ bảng TENANTS (TTL: 24 giờ).`);
+        return items;
+    } catch (err: any) {
+        if (err.response?.data?.code === 99991403) {
+            recordLarkQuotaExceeded(err.response?.data?.msg);
+        } else {
+            console.warn("[larkClient] Không thể gọi API TENANTS từ Lark (Quota hết hoặc mạng bận):", err.message);
+        }
+        if (fs.existsSync(TENANT_CACHE_FILE)) {
+            try {
+                const parsed = JSON.parse(fs.readFileSync(TENANT_CACHE_FILE, "utf-8"));
+                return parsed.data || [];
+            } catch {}
+        }
+        return [];
+    }
 }
 
 /**
@@ -136,19 +225,35 @@ export async function getCachedLinkRequestRecords(forceRefresh = false): Promise
     if (!forceRefresh && cachedLinkRequests && Date.now() < cachedLinkRequests.expiresAt) {
         return cachedLinkRequests.data;
     }
-    const token = await getTenantAccessToken();
-    const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
-    const res = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { page_size: 100 },
-        timeout: 10000,
-    });
-    const items = res.data?.data?.items || [];
-    cachedLinkRequests = {
-        data: items,
-        expiresAt: Date.now() + LINK_REQUEST_CACHE_TTL_MS,
-    };
-    return items;
+    if (isLarkQuotaBlocked()) {
+        return cachedLinkRequests?.data || [];
+    }
+    try {
+        const token = await getTenantAccessToken();
+        const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
+        const res = await axios.get(url, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: { page_size: 100 },
+            timeout: 10000,
+        });
+
+        if (res.data?.code === 99991403) {
+            recordLarkQuotaExceeded(res.data?.msg);
+            return cachedLinkRequests?.data || [];
+        }
+
+        const items = res.data?.data?.items || [];
+        cachedLinkRequests = {
+            data: items,
+            expiresAt: Date.now() + LINK_REQUEST_CACHE_TTL_MS,
+        };
+        return items;
+    } catch (err: any) {
+        if (err.response?.data?.code === 99991403) {
+            recordLarkQuotaExceeded(err.response?.data?.msg);
+        }
+        return cachedLinkRequests?.data || [];
+    }
 }
 
 /**
@@ -285,10 +390,14 @@ export async function createLinkRequest(
     _zaloDisplayName: string,
     contractRecordId: string
 ): Promise<boolean> {
-    const cleanId = cccdOrPhone.replace(/\D/g, "");
-    const token = await getTenantAccessToken();
+    if (isLarkQuotaBlocked()) {
+        console.warn("[larkClient] Circuit Breaker đang bật: Không gửi request lên Lark Base (tiết kiệm API).");
+        return false;
+    }
 
+    const cleanId = cccdOrPhone.replace(/\D/g, "");
     try {
+        const token = await getTenantAccessToken();
         const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
         const res = await axios.post(
             url,
@@ -310,6 +419,11 @@ export async function createLinkRequest(
             }
         );
 
+        if (res.data?.code === 99991403) {
+            recordLarkQuotaExceeded(res.data?.msg);
+            return false;
+        }
+
         if (res.data?.code === 0) {
             console.log(`[larkClient] Đã tạo yêu cầu liên kết cho CCCD ${cleanId} (Zalo UID: ${zaloUserId})`);
             invalidateTenantCache();
@@ -319,7 +433,11 @@ export async function createLinkRequest(
         console.error("[larkClient] Lỗi tạo link request:", res.data);
         return false;
     } catch (err: any) {
-        console.error("[larkClient] Lỗi API createLinkRequest:", err.response?.data || err.message);
+        if (err.response?.data?.code === 99991403) {
+            recordLarkQuotaExceeded(err.response?.data?.msg);
+        } else {
+            console.error("[larkClient] Lỗi API createLinkRequest:", err.response?.data || err.message);
+        }
         return false;
     }
 }
@@ -328,15 +446,20 @@ export async function createLinkRequest(
  * Đọc các yêu cầu liên kết đã được Admin duyệt trên Lark Base (TRẠNG THÁI = "Đã duyệt" và chưa xử lý).
  */
 export async function getApprovedLinkRequests(_sinceTimestamp?: number): Promise<LinkRequestRecord[]> {
-    const token = await getTenantAccessToken();
-
+    if (isLarkQuotaBlocked()) return [];
     try {
+        const token = await getTenantAccessToken();
         const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
         const res = await axios.get(url, {
             headers: { Authorization: `Bearer ${token}` },
             params: { page_size: 100 },
             timeout: 10000,
         });
+
+        if (res.data?.code === 99991403) {
+            recordLarkQuotaExceeded(res.data?.msg);
+            return [];
+        }
 
         const items = res.data?.data?.items || [];
         const approvedList: LinkRequestRecord[] = [];
@@ -368,7 +491,11 @@ export async function getApprovedLinkRequests(_sinceTimestamp?: number): Promise
 
         return approvedList;
     } catch (err: any) {
-        console.error("[larkClient] Lỗi trong getApprovedLinkRequests:", err.response?.data || err.message);
+        if (err.response?.data?.code === 99991403) {
+            recordLarkQuotaExceeded(err.response?.data?.msg);
+        } else {
+            console.error("[larkClient] Lỗi trong getApprovedLinkRequests:", err.response?.data || err.message);
+        }
         return [];
     }
 }
@@ -378,15 +505,20 @@ export async function getApprovedLinkRequests(_sinceTimestamp?: number): Promise
  * Trả về null nếu có lỗi mạng / timeout để tránh xóa nhầm dữ liệu.
  */
 export async function getAllLinkRequests(): Promise<LinkRequestRecord[] | null> {
-    const token = await getTenantAccessToken();
-
+    if (isLarkQuotaBlocked()) return null;
     try {
+        const token = await getTenantAccessToken();
         const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
         const res = await axios.get(url, {
             headers: { Authorization: `Bearer ${token}` },
             params: { page_size: 100 },
             timeout: 15000,
         });
+
+        if (res.data?.code === 99991403) {
+            recordLarkQuotaExceeded(res.data?.msg);
+            return null;
+        }
 
         if (res.data?.code !== 0) {
             console.error("[larkClient] Lark Base trả về lỗi trong getAllLinkRequests:", res.data);
@@ -535,17 +667,10 @@ export async function findActiveLinkByRoom(query: string): Promise<{
  */
 export async function findApprovedLinkByZaloUserId(zaloUserId: string): Promise<ContractRecord | null> {
     if (!zaloUserId) return null;
-    const token = await getTenantAccessToken();
+    if (isLarkQuotaBlocked()) return null;
 
     try {
-        const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records`;
-        const res = await axios.get(url, {
-            headers: { Authorization: `Bearer ${token}` },
-            params: { page_size: 100 },
-            timeout: 10000,
-        });
-
-        const items = res.data?.data?.items || [];
+        const items = await getCachedLinkRequestRecords();
         for (const item of items) {
             const fields = item.fields || {};
             const status = String(fields["TRẠNG THÁI"] || "").trim();
@@ -572,9 +697,9 @@ export async function findApprovedLinkByZaloUserId(zaloUserId: string): Promise<
  * RÀNG BUỘC: CHỈ ghi/sửa trong bảng BOT_LINK_REQUESTS, không đụng vào bảng khác.
  */
 export async function unbindLinkRequest(linkRecordId: string): Promise<boolean> {
-    const token = await getTenantAccessToken();
-
+    if (isLarkQuotaBlocked()) return false;
     try {
+        const token = await getTenantAccessToken();
         const url = `https://open.larksuite.com/open-apis/bitable/v1/apps/${LARK_BASE_APP_TOKEN}/tables/${LARK_BOT_LINK_REQUESTS_TABLE_ID}/records/${linkRecordId}`;
         const res = await axios.put(
             url,
@@ -593,13 +718,22 @@ export async function unbindLinkRequest(linkRecordId: string): Promise<boolean> 
             }
         );
 
+        if (res.data?.code === 99991403) {
+            recordLarkQuotaExceeded(res.data?.msg);
+            return false;
+        }
+
         if (res.data?.code === 0) {
             invalidateTenantCache();
             return true;
         }
         return false;
     } catch (err: any) {
-        console.error("[larkClient] Lỗi unbindLinkRequest:", err.response?.data || err.message);
+        if (err.response?.data?.code === 99991403) {
+            recordLarkQuotaExceeded(err.response?.data?.msg);
+        } else {
+            console.error("[larkClient] Lỗi unbindLinkRequest:", err.response?.data || err.message);
+        }
         return false;
     }
 }
