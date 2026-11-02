@@ -16,6 +16,7 @@ import { startTTLockServiceIfNeeded } from "./ttlock/ttlockServiceManager";
 import { prewarmTTLock } from "./ttlock/ttlockClient";
 import { startMonthlyBillCron } from "./jobs/monthlyBillCron";
 import { sendTestBillToWhitelist, sendRow28BillToWhitelist, fetchBillsFromLark, dispatchMonthlyBills } from "./billing/billService";
+import { startCsvTenantWatcher, loadTenantsFromCsv } from "./user/tenantCsvService";
 
 const app = express();
 
@@ -431,6 +432,10 @@ app.all(["/webhook/lark-trigger", "/webhook/lark-sync"], async (_req: Request, r
 
 app.listen(PORT, () => {
     console.log(`Bot server đang chạy tại http://localhost:${PORT}`);
+    // Khởi động nạp danh bạ cư dân vào RAM và cơ chế tự động theo dõi file tenants.csv (Smart Watcher)
+    loadTenantsFromCsv();
+    startCsvTenantWatcher();
+
     // Khởi động polling duyệt hồ sơ cư dân Lark Base (Task 3B)
     if (process.env.ENABLE_LARK_SYNC === "true") {
         startLinkApprovalPoller();

@@ -5,13 +5,14 @@ import { addMessageToSession, updateSessionContext, getSession } from "./memory/
 import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./intentEngine";
 import { createTicket, formatAdminTicketMessage, Ticket } from "./ticket/ticketService";
 import { ADMIN_PHONE_NUMBER } from "./config/adminConfig";
-import { notifyAdmin } from "./zaloClient";
+import { notifyAdmin, sendAttachmentImage } from "./zaloClient";
 import { resolveUserRole, handlePhoneClaim, handleCccdClaim } from "./user/userRoleService";
 import { handleCsvTenantClaim } from "./user/tenantCsvService";
 import { handleAdminRemoveTag } from "./user/adminTagService";
 import { LARK_INCIDENT_FORM_URL, LARK_INCIDENT_SHORT_URL } from "./lark/larkClient";
 import { requestPasscode } from "./ttlock/ttlockClient";
 import { getActivePasscode, saveActivePasscode } from "./ttlock/lockRegistry";
+import { findBillByRoom, formatBillNotification } from "./billing/billService";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
@@ -155,25 +156,13 @@ export async function generateReplyWithButtons(userText: string, userId: string 
             });
         }
     } else if (userRoleCtx.role === "UNTAGGED_GUEST") {
-        // 1. Ưu tiên xác thực cư dân trực tiếp qua file CSV (Họ tên + CCCD) - Hoạt động độc lập không cần Lark Base
+        // Xác thực cư dân trực tiếp qua file CSV (Họ tên + CCCD) - Hoạt động độc lập 100% không gọi Lark Base
         const csvClaimResult = await handleCsvTenantClaim(userText, userId);
         if (csvClaimResult.handled && csvClaimResult.replyText) {
             addMessageToSession(userId, "assistant", csvClaimResult.replyText);
             return {
                 replyText: csvClaimResult.replyText,
                 recommendedButtons: csvClaimResult.customButtons || [],
-                extractedIntent: intentResult,
-            };
-        }
-
-        // 2. Fallback sang luồng Lark Base (nếu còn dùng)
-        // Xử lý luồng xác thực CCCD cư dân — Zero Information Disclosure
-        const claimResult = await handleCccdClaim(userText, userId, session.userName);
-        if (claimResult.handled && claimResult.replyText) {
-            addMessageToSession(userId, "assistant", claimResult.replyText);
-            return {
-                replyText: claimResult.replyText,
-                recommendedButtons: [],
                 extractedIntent: intentResult,
             };
         }
@@ -364,6 +353,26 @@ export async function generateReplyWithButtons(userText: string, userId: string 
                         { title: "📞 Gọi Ban Quản lý", payload: "Liên hệ" },
                     ];
                 }
+            }
+        }
+    }
+
+    // 2.8. XỬ LÝ TRA CỨU HÓA ĐƠN / TIỀN PHÒNG (BILLING) DÀNH CHO CƯ DÂN CÓ TAG (0 LARK API CALLS)
+    if (!reply && intentResult.intent === "BILLING") {
+        const targetRoom = userRoleCtx.roomNumber || session.roomNumber;
+        if (targetRoom && targetRoom !== "Chưa xác định" && targetRoom !== "000") {
+            const bill = findBillByRoom(targetRoom);
+            if (bill) {
+                reply = formatBillNotification(bill);
+                customButtons = [
+                    { title: "✅ Đã chuyển khoản", payload: `Đã chuyển khoản bill phòng ${bill.roomNumber}` },
+                    { title: "📞 Cần hỗ trợ", payload: "Liên hệ" },
+                ];
+                if (bill.qrAttachmentId) {
+                    sendAttachmentImage(userId, bill.qrAttachmentId).catch(() => {});
+                }
+            } else {
+                reply = `Dạ, hiện tại Ban Quản lý chưa cập nhật bảng hóa đơn kỳ này cho phòng ${targetRoom} ạ.\n\nHóa đơn định kỳ sẽ được tự động gửi vào 20h00 ngày 1 hàng tháng. Nếu cần hỗ trợ khẩn cấp, bạn liên hệ:\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`;
             }
         }
     }

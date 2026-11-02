@@ -103,13 +103,64 @@ export function findZaloUserByRoom(roomNumber: string): string | null {
     const cleanTarget = String(roomNumber).replace(/\D/g, "");
     const links = getLocalActiveLinks();
 
-    for (const [uid, info] of Object.entries(links)) {
+    for (const [key, info] of Object.entries(links)) {
         const r = String((info as any)?.roomNumber || "").replace(/\D/g, "");
         if (r && r === cleanTarget) {
-            return uid;
+            return (info as any)?.zaloUserId || key;
         }
     }
     return null;
+}
+
+/**
+ * Lấy tất cả Zalo User ID đã gắn tag của một phòng (Chủ hộ + Cùng lưu trú)
+ */
+export function findZaloUsersByRoom(roomNumber: string): string[] {
+    if (!roomNumber) return [];
+    const cleanTarget = String(roomNumber).replace(/\D/g, "");
+    const links = getLocalActiveLinks();
+    const uids: string[] = [];
+
+    for (const [key, info] of Object.entries(links)) {
+        const r = String((info as any)?.roomNumber || "").replace(/\D/g, "");
+        if (r && r === cleanTarget) {
+            const uid = (info as any)?.zaloUserId || key;
+            if (uid && !uids.includes(uid)) {
+                uids.push(uid);
+            }
+        }
+    }
+    return uids;
+}
+
+/**
+ * Tìm hóa đơn của một phòng từ bộ nhớ đệm persistent cache tháng (0 Lark API calls)
+ */
+export function findBillByRoom(roomNumber: string): BillRecord | null {
+    if (!roomNumber) return null;
+    const clean = String(roomNumber).replace(/\D/g, "");
+    const cache = loadMonthlyBillsCache();
+    if (!cache || !Array.isArray(cache.bills)) return null;
+    return cache.bills.find((b) => String(b.roomNumber).replace(/\D/g, "") === clean) || null;
+}
+
+/**
+ * Cập nhật attachment IDs (Zalo CDN) của hóa đơn vào cache đĩa để tái sử dụng mãi mãi trong tháng
+ */
+export function updateCachedBillAttachments(recordId: string, qrAttachmentId?: string, billAttachmentId?: string): void {
+    try {
+        const cache = loadMonthlyBillsCache();
+        if (cache && Array.isArray(cache.bills)) {
+            const item = cache.bills.find((b) => b.recordId === recordId);
+            if (item) {
+                if (qrAttachmentId) item.qrAttachmentId = qrAttachmentId;
+                if (billAttachmentId) item.billAttachmentId = billAttachmentId;
+                saveMonthlyBillsCache(cache);
+            }
+        }
+    } catch (err: any) {
+        console.warn("[billService] Không thể cập nhật attachment ID vào cache:", err.message);
+    }
 }
 
 /**
@@ -372,7 +423,7 @@ export async function fetchBillsFromLark(forceRefresh = false): Promise<BillReco
 }
 
 /**
- * Gửi một hóa đơn cụ thể tới Zalo User ID
+ * Gửi một hóa đơn cụ thể tới Zalo User ID (Chỉ gọi Lark Base lấy ảnh/upload khi có người nhận hợp lệ)
  */
 export async function sendBillToUser(bill: BillRecord, targetUserId: string): Promise<boolean> {
     try {
@@ -384,6 +435,8 @@ export async function sendBillToUser(bill: BillRecord, targetUserId: string): Pr
 
         // 1. Gửi tin nhắn thông báo tóm tắt hóa đơn kèm 2 nút tương tác
         await sendQuickReplies(targetUserId, messageText, buttons);
+
+        let cacheUpdated = false;
 
         // 2. Gửi mã QR ngân hàng để quét chuyển khoản (Tận dụng qrAttachmentId đã cache để tiết kiệm upload)
         let qrAttachmentId: string | null = bill.qrAttachmentId || null;
@@ -399,6 +452,7 @@ export async function sendBillToUser(bill: BillRecord, targetUserId: string): Pr
             }
             if (qrAttachmentId) {
                 bill.qrAttachmentId = qrAttachmentId;
+                cacheUpdated = true;
             }
         }
 
@@ -407,19 +461,25 @@ export async function sendBillToUser(bill: BillRecord, targetUserId: string): Pr
             await sendAttachmentImage(targetUserId, qrAttachmentId);
         }
 
-        // 3. Nếu có ảnh hóa đơn chi tiết đính kèm từ Lark thì gửi tiếp ảnh hóa đơn
+        // 3. Nếu có ảnh hóa đơn chi tiết đính kèm từ Lark thì tải và gửi tiếp ảnh hóa đơn
         if (bill.billImageUrl) {
             let billAttachmentId: string | null = bill.billAttachmentId || null;
             if (!billAttachmentId) {
                 billAttachmentId = await downloadAndUploadToZalo(bill.billImageUrl);
                 if (billAttachmentId) {
                     bill.billAttachmentId = billAttachmentId;
+                    cacheUpdated = true;
                 }
             }
             if (billAttachmentId) {
                 console.log(`[billService] Gửi ảnh Bill chi tiết tới user ${targetUserId}...`);
                 await sendAttachmentImage(targetUserId, billAttachmentId);
             }
+        }
+
+        // Cập nhật attachment ID vào cache đĩa để các lần gửi/tra cứu tiếp theo dùng ngay (0 Lark API calls)
+        if (cacheUpdated) {
+            updateCachedBillAttachments(bill.recordId, bill.qrAttachmentId, bill.billAttachmentId);
         }
 
         console.log(`[billService] ✅ Đã gửi thành công bill phòng ${bill.roomNumber} tới user ${targetUserId}`);
@@ -432,6 +492,8 @@ export async function sendBillToUser(bill: BillRecord, targetUserId: string): Pr
 
 /**
  * TIẾN TRÌNH TỰ ĐỘNG CHÍNH (Được kích hoạt lúc 20:00 ngày 1 hằng tháng)
+ * QUY TẮC CỐT LÕI: Chỉ tải ảnh và gửi hóa đơn cho phòng có cư dân đã gắn tag Zalo (User có tag).
+ * Phòng chưa gắn tag sẽ được bỏ qua hoàn toàn (0 tải ảnh, 0 upload CDN, 0 tiêu tốn quota).
  */
 export async function dispatchMonthlyBills(): Promise<{ total: number; sent: number; skipped: number; errors: number }> {
     console.log("[billService] 🚀 Đang quét danh sách hóa đơn từ Lark Base (hoặc cache)...");
@@ -450,22 +512,30 @@ export async function dispatchMonthlyBills(): Promise<{ total: number; sent: num
             continue;
         }
 
-        const zaloUserId = findZaloUserByRoom(bill.roomNumber);
-        if (!zaloUserId) {
-            console.warn(`[billService] ⚠️ Không tìm thấy Zalo UID của cư dân phòng ${bill.roomNumber}. Bỏ qua.`);
+        // BỘ LỌC CỐT LÕI: CHỈ XỬ LÝ PHÒNG CÓ CƯ DÂN ĐÃ GẮN TAG (USER CÓ TAG)
+        const targetUserIds = findZaloUsersByRoom(bill.roomNumber);
+        if (targetUserIds.length === 0) {
+            console.log(`[billService] ⏭️ Bỏ qua phòng ${bill.roomNumber} (${bill.tenantName}): Chưa có cư dân gắn tag Zalo (0 tải ảnh, 0 upload, 0 gửi).`);
             skipped++;
             continue;
         }
 
-        const ok = await sendBillToUser(bill, zaloUserId);
-        if (ok) {
+        // Gửi cho tất cả cư dân đã gắn tag của phòng đó (Chủ hộ / Cùng lưu trú)
+        let sentForBill = false;
+        for (const targetUserId of targetUserIds) {
+            const ok = await sendBillToUser(bill, targetUserId);
+            if (ok) {
+                sentForBill = true;
+            }
+            // Tạm nghỉ 500ms giữa các tin nhắn để tuân thủ tốc độ Zalo API
+            await new Promise((r) => setTimeout(r, 500));
+        }
+
+        if (sentForBill) {
             sent++;
         } else {
             errors++;
         }
-
-        // Tạm nghỉ 500ms giữa các tin nhắn để tuân thủ tốc độ Zalo API
-        await new Promise((r) => setTimeout(r, 500));
     }
 
     console.log(`[billService] 🏁 Kết thúc gửi hóa đơn tháng: Tổng ${bills.length} | Gửi: ${sent} | Bỏ qua: ${skipped} | Lỗi: ${errors}`);

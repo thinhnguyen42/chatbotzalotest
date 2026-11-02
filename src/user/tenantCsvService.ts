@@ -19,6 +19,12 @@ export interface CsvTenant {
 const ACTIVE_LINKS_FILE = path.resolve(process.cwd(), "data", "active-links.json");
 const TENANTS_CSV_FILE = process.env.TENANTS_CSV_PATH || path.resolve(process.cwd(), "data", "tenants.csv");
 
+// Bộ nhớ đệm cư dân trong RAM và thông tin giám sát file
+let cachedTenants: CsvTenant[] = [];
+let lastCsvMtimeMs: number = 0;
+let lastCsvSize: number = 0;
+let csvWatcherRunning: boolean = false;
+
 /**
  * Đọc toàn bộ danh sách liên kết đang hoạt động từ active-links.json
  */
@@ -78,15 +84,22 @@ function parseCsvLine(line: string, delimiter: string): string[] {
 }
 
 /**
- * Đọc và phân tích file tenants.csv
+ * Đọc và phân tích file tenants.csv có tích hợp RAM Cache thông minh.
+ * Nếu file không thay đổi (khớp mtime và size), hàm trả về dữ liệu trong RAM ngay lập tức (0ms, 0 disk I/O).
  */
-export function loadTenantsFromCsv(): CsvTenant[] {
+export function loadTenantsFromCsv(forceReload = false): CsvTenant[] {
     if (!fs.existsSync(TENANTS_CSV_FILE)) {
         console.warn(`[tenantCsvService] ⚠️ Không tìm thấy file tenants.csv tại: ${TENANTS_CSV_FILE}`);
+        cachedTenants = [];
         return [];
     }
 
     try {
+        const stat = fs.statSync(TENANTS_CSV_FILE);
+        if (!forceReload && cachedTenants.length > 0 && stat.mtimeMs === lastCsvMtimeMs && stat.size === lastCsvSize) {
+            return cachedTenants;
+        }
+
         let content = fs.readFileSync(TENANTS_CSV_FILE, "utf-8");
         // Loại bỏ BOM nếu có (UTF-8 BOM: \uFEFF)
         if (content.charCodeAt(0) === 0xfeff) {
@@ -95,6 +108,7 @@ export function loadTenantsFromCsv(): CsvTenant[] {
 
         const lines = content.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
         if (lines.length < 2) {
+            cachedTenants = [];
             return [];
         }
 
@@ -165,10 +179,131 @@ export function loadTenantsFromCsv(): CsvTenant[] {
             });
         }
 
+        cachedTenants = tenants;
+        lastCsvMtimeMs = stat.mtimeMs;
+        lastCsvSize = stat.size;
+        console.log(`[tenantCsvService] 📁 Đã tải và nạp vào RAM cache ${tenants.length} cư dân từ tenants.csv (Dung lượng: ${stat.size} bytes).`);
+
         return tenants;
     } catch (err: any) {
         console.error("[tenantCsvService] Lỗi khi đọc file CSV:", err.message);
         return [];
+    }
+}
+
+/**
+ * Lấy danh sách cư dân hiện tại trong bộ nhớ đệm RAM (0 disk I/O, 0ms)
+ */
+export function getCachedTenants(): CsvTenant[] {
+    if (cachedTenants.length === 0) {
+        return loadTenantsFromCsv();
+    }
+    return cachedTenants;
+}
+
+/**
+ * Tìm cư dân theo số CCCD trong bộ nhớ đệm
+ */
+export function findTenantByCccd(cccd: string): CsvTenant | undefined {
+    const clean = (cccd || "").replace(/\D/g, "");
+    if (!clean) return undefined;
+    return getCachedTenants().find((t) => t.cccd === clean);
+}
+
+/**
+ * Tìm danh sách cư dân theo số phòng trong bộ nhớ đệm
+ */
+export function findTenantsByRoom(roomNumber: string): CsvTenant[] {
+    const clean = (roomNumber || "").replace(/\D/g, "");
+    if (!clean) return [];
+    return getCachedTenants().filter((t) => t.roomNumber === clean);
+}
+
+/**
+ * Đối chiếu và đồng bộ lại danh sách active-links.json khi có file CSV mới
+ */
+export function syncActiveLinksWithCsv(): void {
+    try {
+        const activeLinks = getLocalActiveLinks();
+        const keys = Object.keys(activeLinks);
+        if (keys.length === 0) return;
+
+        const currentTenants = loadTenantsFromCsv();
+        let changed = false;
+
+        for (const key of keys) {
+            const link = activeLinks[key];
+            const cleanCccd = String(link.cccd || "").replace(/\D/g, "");
+            if (!cleanCccd) continue;
+
+            const matched = currentTenants.find((t) => t.cccd === cleanCccd);
+            if (matched) {
+                if (
+                    link.roomNumber !== matched.roomNumber ||
+                    link.tagCode !== matched.tagCode ||
+                    link.tenantName !== matched.tenantName ||
+                    link.role !== matched.role
+                ) {
+                    console.log(`[tenantCsvService] 🔄 Cập nhật thông tin cư dân ${link.tenantName} (${link.roomNumber} -> ${matched.roomNumber})`);
+                    link.roomNumber = matched.roomNumber;
+                    link.tagCode = matched.tagCode;
+                    link.tenantName = matched.tenantName;
+                    link.role = matched.role;
+                    changed = true;
+                }
+            } else {
+                console.log(`[tenantCsvService] ℹ️ Cư dân ${link.tenantName} (Phòng ${link.roomNumber}, CCCD ${cleanCccd}) không có trong danh bạ CSV mới.`);
+            }
+        }
+
+        if (changed) {
+            saveLocalActiveLinks(activeLinks);
+            console.log("[tenantCsvService] 💾 Đã cập nhật active-links.json sau khi đồng bộ với file tenants.csv mới.");
+        }
+    } catch (err: any) {
+        console.error("[tenantCsvService] Lỗi khi đồng bộ active-links với CSV:", err.message);
+    }
+}
+
+/**
+ * Khởi động tiến trình giám sát file tenants.csv (Watcher)
+ * Tự động phát hiện khi file tenants.csv bị ghi đè/thay đổi bởi người dùng,
+ * tự động nạp lại cache RAM và đồng bộ active-links mà không cần khởi động lại bot.
+ */
+export function startCsvTenantWatcher(): void {
+    if (csvWatcherRunning) {
+        return;
+    }
+
+    // Nạp ban đầu vào RAM
+    loadTenantsFromCsv();
+
+    if (!fs.existsSync(TENANTS_CSV_FILE)) {
+        console.warn(`[tenantCsvService] ⚠️ Chưa tìm thấy file tenants.csv để thiết lập watcher: ${TENANTS_CSV_FILE}`);
+    }
+
+    try {
+        fs.watchFile(TENANTS_CSV_FILE, { interval: 2000 }, (curr, prev) => {
+            if (curr.mtimeMs !== prev.mtimeMs || curr.size !== prev.size) {
+                console.log(`[tenantCsvService] 🔄 Phát hiện file tenants.csv đã được cập nhật! (Size: ${curr.size}B, mtime: ${new Date(curr.mtimeMs).toLocaleTimeString()}). Đang làm mới bộ nhớ đệm...`);
+                loadTenantsFromCsv(true);
+                syncActiveLinksWithCsv();
+            }
+        });
+        csvWatcherRunning = true;
+        console.log(`[tenantCsvService] 👁️ Đã kích hoạt cơ chế theo dõi tự động tenants.csv (Khoảng kiểm tra: 2s).`);
+    } catch (err: any) {
+        console.warn(`[tenantCsvService] Không thể thiết lập fs.watchFile cho tenants.csv:`, err.message);
+    }
+}
+
+export function stopCsvTenantWatcher(): void {
+    if (csvWatcherRunning) {
+        try {
+            fs.unwatchFile(TENANTS_CSV_FILE);
+            csvWatcherRunning = false;
+            console.log(`[tenantCsvService] Đã dừng theo dõi file tenants.csv.`);
+        } catch {}
     }
 }
 
@@ -322,10 +457,6 @@ export async function handleCsvTenantClaim(
     const matchedTenant = tenants.find((t) => t.cccd === cleanCccd);
 
     if (!matchedTenant) {
-        // Nếu không có trong CSV nhưng bật đồng bộ Lark Base -> Cho phép fallback sang Lark Base
-        if (process.env.ENABLE_LARK_SYNC === "true") {
-            return { handled: false };
-        }
         return {
             handled: true,
             replyText: `⚠️ Không tìm thấy hồ sơ cư dân tương ứng với số CCCD ${cleanCccd} trong danh bạ tòa nhà.\n\nBạn vui lòng kiểm tra lại số CCCD hoặc liên hệ Ban Quản lý để được hỗ trợ nhé:\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`,
