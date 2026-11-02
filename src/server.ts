@@ -16,7 +16,8 @@ import { startTTLockServiceIfNeeded } from "./ttlock/ttlockServiceManager";
 import { prewarmTTLock } from "./ttlock/ttlockClient";
 import { startMonthlyBillCron } from "./jobs/monthlyBillCron";
 import { sendTestBillToWhitelist, sendRow28BillToWhitelist, fetchBillsFromLark, dispatchMonthlyBills } from "./billing/billService";
-import { startCsvTenantWatcher, loadTenantsFromCsv } from "./user/tenantCsvService";
+import { startCsvTenantWatcher, loadTenantsFromCsv, handleAdminCsvUpload, validateAndParseCsvContent, backupCurrentTenantsCsv, syncActiveLinksWithCsv } from "./user/tenantCsvService";
+import { isAdminUser } from "./config/adminConfig";
 
 const app = express();
 
@@ -118,6 +119,38 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
             return;
         }
 
+        // Sự kiện Admin gửi file danh bạ cư dân (.csv) trực tiếp qua Zalo OA
+        if (event.event_name === "user_send_file" || event.event_name === "user_send_attachment") {
+            const userId = event.sender?.id || event.user_id_by_app;
+            const attachments = event.message?.attachments || [];
+            const fileAttachment = attachments.find((att: any) => att.type === "file" || att.payload?.url) ||
+                                   attachments[0] ||
+                                   event.message?.file;
+
+            const fileUrl = fileAttachment?.payload?.url || fileAttachment?.url;
+            const fileName = fileAttachment?.payload?.name || fileAttachment?.name || "tenants.csv";
+
+            if (userId && fileUrl) {
+                if (!isAdminUser(userId)) {
+                    console.warn(`[server] Người dùng ${userId} không phải Admin gửi file. Bỏ qua.`);
+                    await sendTextMessage(userId, "⚠️ Tính năng cập nhật danh bạ cư dân qua file chỉ dành riêng cho Ban Quản trị / Admin tòa nhà.");
+                    return;
+                }
+
+                console.log(`[server] 📁 Nhận file từ Admin ${userId}: "${fileName}" -> URL: ${fileUrl}`);
+                await sendTextMessage(userId, `⏳ Quản gia AI đã nhận file "${fileName}". Đang kiểm tra cấu trúc và cập nhật danh bạ...`);
+
+                const uploadResult = await handleAdminCsvUpload({
+                    fileUrl,
+                    fileName,
+                    adminUserId: userId,
+                });
+
+                await sendTextMessage(userId, uploadResult.message);
+                return;
+            }
+        }
+
         // Sự kiện người dùng gửi tin nhắn văn bản hoặc bấm nút tương tác
         if (event.event_name === "user_send_text" || event.event_name === "user_click_button" || event.event_name === "user_click_oa_menu") {
             const userId = event.sender?.id || event.user_id_by_app;
@@ -127,6 +160,21 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                 // Bỏ qua gói tin test giả lập từ Zalo Developer Portal Webhook Tester (tránh lỗi user_id is invalid)
                 if (event.message?.msg_id === "This is message id" || userText === "This is testing message" || userId === "6053690184268964198") {
                     console.log("[webhook] Nhận gói tin Webhook Test giả lập từ Zalo Developer Portal. Bỏ qua phản hồi để tránh lỗi user_id is invalid.");
+                    return;
+                }
+
+                // Lệnh Admin cập nhật file CSV qua link URL (#csv <url> hoặc #update csv <url>)
+                const csvLinkMatch = userText.match(/(?:#csv|#update csv|#tenants)\s+(https?:\/\/[^\s]+)/i);
+                if (csvLinkMatch && isAdminUser(userId)) {
+                    const fileUrl = csvLinkMatch[1];
+                    const fileName = fileUrl.split("/").pop()?.split("?")[0] || "tenants.csv";
+                    await sendTextMessage(userId, `⏳ Quản gia AI đang tải và đối soát file CSV từ đường dẫn...`);
+                    const uploadResult = await handleAdminCsvUpload({
+                        fileUrl,
+                        fileName,
+                        adminUserId: userId,
+                    });
+                    await sendTextMessage(userId, uploadResult.message);
                     return;
                 }
 
@@ -484,6 +532,41 @@ app.all("/api/bills/dispatch-monthly", async (_req: Request, res: Response) => {
     } catch (err: any) {
         console.error("[server] Lỗi kích hoạt gửi hóa đơn tháng:", err.message);
         res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Endpoint cho Admin cập nhật CSV qua API (Hỗ trợ fileUrl hoặc raw CSV content trong body)
+app.post("/api/admin/sync-csv", async (req: Request, res: Response) => {
+    try {
+        const { fileUrl, fileName, content, adminUserId } = req.body;
+        if (fileUrl) {
+            const uploadResult = await handleAdminCsvUpload({
+                fileUrl,
+                fileName: fileName || "tenants.csv",
+                adminUserId: adminUserId || "API_ADMIN",
+            });
+            return res.json(uploadResult);
+        } else if (content) {
+            const validation = validateAndParseCsvContent(content);
+            if (!validation.valid) {
+                return res.status(400).json({ success: false, error: validation.error });
+            }
+            backupCurrentTenantsCsv();
+            const tenantsCsvPath = process.env.TENANTS_CSV_PATH || path.resolve(process.cwd(), "data", "tenants.csv");
+            fs.writeFileSync(tenantsCsvPath, content, "utf-8");
+            loadTenantsFromCsv(true);
+            syncActiveLinksWithCsv();
+            return res.json({
+                success: true,
+                tenantCount: validation.tenants.length,
+                roomCount: validation.roomCount,
+                message: "Đã cập nhật danh bạ thành công qua API.",
+            });
+        } else {
+            return res.status(400).json({ success: false, error: "Thiếu fileUrl hoặc content trong body." });
+        }
+    } catch (err: any) {
+        return res.status(500).json({ success: false, error: err.message });
     }
 });
 

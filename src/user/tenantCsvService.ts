@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import axios from "axios";
 import { removeVietnameseDiacritics } from "../utils/textUtils";
 import { ADMIN_PHONE_NUMBER } from "../config/adminConfig";
 import { getSession, updateSessionContext } from "../memory/sessionMemory";
@@ -588,4 +589,237 @@ export async function handleCsvTenantClaim(
             { title: "🏠 Cửa phòng", payload: "Cửa phòng" },
         ],
     };
+}
+
+/**
+ * Thư mục sao lưu các phiên bản file CSV cũ
+ */
+const BACKUP_DIR = path.resolve(process.cwd(), "data", "backups");
+
+/**
+ * Kiểm tra tính hợp lệ và đếm số lượng bản ghi của chuỗi nội dung CSV
+ */
+export function validateAndParseCsvContent(content: string): {
+    valid: boolean;
+    error?: string;
+    tenants: CsvTenant[];
+    roomCount: number;
+} {
+    let clean = content;
+    // Loại bỏ BOM nếu có (UTF-8 BOM: \uFEFF)
+    if (clean.charCodeAt(0) === 0xfeff) {
+        clean = clean.slice(1);
+    }
+
+    const lines = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) {
+        return { valid: false, error: "File CSV trống hoặc chỉ có dòng tiêu đề, không có dữ liệu cư dân.", tenants: [], roomCount: 0 };
+    }
+
+    const headerLine = lines[0];
+    const delimiter = headerLine.includes(";") && !headerLine.includes(",") ? ";" : ",";
+    const headers = parseCsvLine(headerLine, delimiter).map((h) =>
+        removeVietnameseDiacritics(h.toLowerCase()).replace(/[^a-z0-9]/g, "")
+    );
+
+    const nameIdx = headers.findIndex(
+        (h) => h.includes("hovaten") || h === "ten" || h === "name" || (h.includes("ten") && !h.startsWith("ma"))
+    );
+    const cccdIdx = headers.findIndex((h) => h.includes("cccd") || h.includes("cmnd") || h.includes("dinhdanh"));
+    const roomIdx = headers.findIndex((h) => h.includes("phong") || h.includes("room"));
+    const buildingIdx = headers.findIndex((h) => h.includes("toanha") || h.includes("building"));
+    const phoneIdx = headers.findIndex((h) => h.includes("sdt") || h.includes("dienthoai") || h.includes("phone"));
+    const roleIdx = headers.findIndex((h) => h.includes("vaitro") || h.includes("role"));
+
+    const missingColumns: string[] = [];
+    if (nameIdx === -1) missingColumns.push("Họ và tên");
+    if (cccdIdx === -1) missingColumns.push("Số CCCD/CMND");
+    if (roomIdx === -1) missingColumns.push("Số phòng");
+
+    if (missingColumns.length > 0) {
+        return {
+            valid: false,
+            error: `File CSV thiếu các cột bắt buộc: [${missingColumns.join(", ")}]. Vui lòng kiểm tra lại file xuất từ hệ thống.`,
+            tenants: [],
+            roomCount: 0,
+        };
+    }
+
+    const tenants: CsvTenant[] = [];
+    const rooms = new Set<string>();
+
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i], delimiter);
+        if (cols.length <= Math.max(nameIdx, cccdIdx, roomIdx)) continue;
+
+        const rawName = cols[nameIdx] || "";
+        const rawCccd = (cols[cccdIdx] || "").replace(/\D/g, "");
+        const rawRoom = cols[roomIdx] || "";
+        const rawBuilding = buildingIdx !== -1 && cols[buildingIdx] ? cols[buildingIdx] : "38PBV";
+        const rawPhone = phoneIdx !== -1 && cols[phoneIdx] ? cols[phoneIdx].replace(/\D/g, "") : undefined;
+        const rawRole = roleIdx !== -1 && cols[roleIdx] ? cols[roleIdx] : "PRIMARY_LEASEHOLDER";
+
+        if (!rawName || !rawCccd) continue;
+
+        const roomMatch = rawRoom.match(/\d{3,4}/);
+        const roomNumber = roomMatch ? roomMatch[0] : rawRoom.replace(/[^a-zA-Z0-9]/g, "");
+        let building = (rawBuilding.trim() || "38PBV").toUpperCase();
+        if (!building || building === "TEST") {
+            building = "38PBV";
+        }
+        const tagCode = `${building}-${roomNumber}`;
+
+        const normRole = removeVietnameseDiacritics(rawRole);
+        const role: "PRIMARY_LEASEHOLDER" | "CO_RESIDENT" =
+            normRole.includes("cung") || normRole.includes("phu") || normRole.includes("resident") || normRole.includes("con")
+                ? "CO_RESIDENT"
+                : "PRIMARY_LEASEHOLDER";
+
+        tenants.push({
+            tenantName: rawName.trim(),
+            cccd: rawCccd,
+            roomNumber,
+            tagCode,
+            building,
+            phone: rawPhone,
+            role,
+        });
+        if (roomNumber) rooms.add(roomNumber);
+    }
+
+    if (tenants.length === 0) {
+        return {
+            valid: false,
+            error: "Không tìm thấy dòng cư dân hợp lệ nào (Cần ít nhất Họ tên và Số CCCD).",
+            tenants: [],
+            roomCount: 0,
+        };
+    }
+
+    return {
+        valid: true,
+        tenants,
+        roomCount: rooms.size,
+    };
+}
+
+/**
+ * Tự động tạo bản sao lưu (Backup) file tenants.csv hiện tại
+ */
+export function backupCurrentTenantsCsv(): string | null {
+    try {
+        if (!fs.existsSync(TENANTS_CSV_FILE)) {
+            return null;
+        }
+
+        if (!fs.existsSync(BACKUP_DIR)) {
+            fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        }
+
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, "0");
+        const d = String(now.getDate()).padStart(2, "0");
+        const h = String(now.getHours()).padStart(2, "0");
+        const min = String(now.getMinutes()).padStart(2, "0");
+        const s = String(now.getSeconds()).padStart(2, "0");
+        const backupFileName = `tenants_${y}${m}${d}_${h}${min}${s}.csv`;
+        const backupPath = path.join(BACKUP_DIR, backupFileName);
+
+        fs.copyFileSync(TENANTS_CSV_FILE, backupPath);
+        console.log(`[tenantCsvService] 🗄️ Đã sao lưu tenants.csv thành công: ${backupFileName}`);
+
+        // Giới hạn lưu tối đa 15 bản backup gần nhất, xóa bớt bản cũ
+        const allBackups = fs.readdirSync(BACKUP_DIR)
+            .filter((f) => f.startsWith("tenants_") && f.endsWith(".csv"))
+            .sort();
+        if (allBackups.length > 15) {
+            const toDelete = allBackups.slice(0, allBackups.length - 15);
+            for (const oldFile of toDelete) {
+                try { fs.unlinkSync(path.join(BACKUP_DIR, oldFile)); } catch {}
+            }
+        }
+
+        return backupFileName;
+    } catch (err: any) {
+        console.warn("[tenantCsvService] Không thể sao lưu file tenants.csv cũ:", err.message);
+        return null;
+    }
+}
+
+/**
+ * Xử lý file CSV do Admin gửi qua Zalo OA:
+ * 1. Tải file từ Zalo CDN
+ * 2. Validate cấu trúc và dữ liệu
+ * 3. Tự động backup file cũ
+ * 4. Ghi đè vào data/tenants.csv
+ * 5. Tự động nạp lại RAM Cache 0ms và đồng bộ active-links
+ * 6. Trả về thông báo kết quả chi tiết cho Admin
+ */
+export async function handleAdminCsvUpload(params: {
+    fileUrl: string;
+    fileName: string;
+    adminUserId: string;
+}): Promise<{ success: boolean; message: string; tenantCount?: number; roomCount?: number }> {
+    const { fileUrl, fileName, adminUserId } = params;
+
+    // 1. Kiểm tra phần mở rộng file (Phải là file .csv)
+    const lowerName = fileName.toLowerCase();
+    if (!lowerName.endsWith(".csv") && !lowerName.endsWith(".txt")) {
+        return {
+            success: false,
+            message: `⚠️ File gửi lên ("${fileName}") không phải định dạng CSV.\n\nBạn vui lòng xuất file từ bảng quản lý với định dạng .csv rồi gửi lại nhé!`,
+        };
+    }
+
+    try {
+        console.log(`[tenantCsvService] 📥 Đang tải file CSV từ Zalo CDN: ${fileName}...`);
+        const res = await axios.get(fileUrl, {
+            responseType: "arraybuffer",
+            timeout: 20000,
+        });
+
+        const rawContent = Buffer.from(res.data).toString("utf-8");
+
+        // 2. Kiểm tra tính hợp lệ của cấu trúc CSV
+        const validation = validateAndParseCsvContent(rawContent);
+        if (!validation.valid) {
+            return {
+                success: false,
+                message: `⚠️ File CSV "${fileName}" không hợp lệ:\n• ${validation.error}\n\nHệ thống đã giữ nguyên danh bạ cư dân hiện tại để đảm bảo an toàn.`,
+            };
+        }
+
+        // 3. Sao lưu file cũ trước khi ghi đè
+        const backupName = backupCurrentTenantsCsv();
+
+        // 4. Ghi đè file mới vào data/tenants.csv
+        const targetDir = path.dirname(TENANTS_CSV_FILE);
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+        fs.writeFileSync(TENANTS_CSV_FILE, rawContent, "utf-8");
+
+        // 5. Hot-Reload bộ nhớ đệm RAM tức thì (0ms) và đồng bộ active-links
+        loadTenantsFromCsv(true);
+        syncActiveLinksWithCsv();
+
+        const timeStr = new Date().toLocaleString("vi-VN");
+        const backupNote = backupName ? `\n• Bản sao lưu an toàn: ${backupName}` : "";
+
+        console.log(`[tenantCsvService] 🎉 Admin ${adminUserId} đã cập nhật thành công danh bạ từ "${fileName}" (${validation.tenants.length} cư dân, ${validation.roomCount} phòng).`);
+
+        return {
+            success: true,
+            tenantCount: validation.tenants.length,
+            roomCount: validation.roomCount,
+            message: `✅ CẬP NHẬT DANH BẠ CƯ DÂN THÀNH CÔNG!\n\n📁 Tên file: ${fileName}\n👥 Tổng số cư dân: ${validation.tenants.length} người\n🏠 Số phòng quản lý: ${validation.roomCount} phòng\n⚡ Bộ nhớ đệm (RAM Cache): Đã làm mới tức thì (Hot-Reload)${backupNote}\n⏰ Thời gian áp dụng: ${timeStr}\n\n👉 Danh bạ mới đã sẵn sàng cho cư dân tra cứu và nhận hóa đơn tự động!`,
+        };
+    } catch (err: any) {
+        console.error(`[tenantCsvService] Lỗi khi xử lý file CSV từ Admin:`, err.message);
+        return {
+            success: false,
+            message: `❌ Lỗi khi tải hoặc xử lý file CSV: ${err.message}. Hệ thống đã giữ nguyên danh bạ hiện tại.`,
+        };
+    }
 }
