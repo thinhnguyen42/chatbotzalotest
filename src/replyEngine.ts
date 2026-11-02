@@ -6,7 +6,7 @@ import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./inte
 import { createTicket, formatAdminTicketMessage, Ticket } from "./ticket/ticketService";
 import { ADMIN_PHONE_NUMBER } from "./config/adminConfig";
 import { notifyAdmin, sendAttachmentImage } from "./zaloClient";
-import { resolveUserRole, handlePhoneClaim, handleCccdClaim } from "./user/userRoleService";
+import { resolveUserRole, handlePhoneClaim, handleCccdClaim, extractPhoneNumber } from "./user/userRoleService";
 import { handleCsvTenantClaim } from "./user/tenantCsvService";
 import { handleAdminRemoveTag } from "./user/adminTagService";
 import { LARK_INCIDENT_FORM_URL, LARK_INCIDENT_SHORT_URL } from "./lark/larkClient";
@@ -25,6 +25,39 @@ export interface BotReplyResult {
     extractedIntent: IntentResult;
     createdTicket?: Ticket;
     adminNotificationMsg?: string;
+}
+
+/**
+ * Kiểm tra xem tin nhắn có phải là yêu cầu liên hệ chủ nhà, hỏi thuê phòng,
+ * hoặc cần sự hỗ trợ trực tiếp từ Ban Quản lý / Chủ trọ hay không.
+ */
+export function isLandlordContactRequest(text: string, normText?: string): boolean {
+    const raw = (text || "").toLowerCase().trim();
+    const cleanNorm = removeVietnameseDiacritics(normText || raw).toLowerCase().trim();
+
+    // 1. Khớp từ khóa trực tiếp nhắc đến Chủ nhà / Chủ trọ / Quản lý / BQL
+    if (/\b(chu nha|chu tro|chu phong|chu can ho|chu ho|chu toa nha|quan ly|bql|admin|ban quan ly)\b/i.test(cleanNorm)) {
+        return true;
+    }
+
+    // 2. Khớp các hành động muốn liên hệ, gặp, gọi, nhắn, trao đổi
+    if (/\b(lien he|gap|noi chuyen|nhan tin|nhan giup|bao giup|goi dien|sdt|so dien thoai|hotline)\b/i.test(cleanNorm)) {
+        if (/\b(chu|tro|quan ly|admin|bql|nha|phong|ban quan ly|host)\b/i.test(cleanNorm)) {
+            return true;
+        }
+    }
+
+    // 3. Khớp các câu hỏi thuê phòng, xem phòng, tìm phòng từ khách vãng lai
+    if (/\b(thue phong|hoi thue|xem phong|con phong|phong trong|gia phong|tu van thue|tim phong|thue tro|thue can ho|dat coc|tien coc|giu phong|hop dong thue|hoi phong|muon thue|co phong khong|con phong khong|gia thue|gia bao nhieu)\b/i.test(cleanNorm)) {
+        return true;
+    }
+
+    // 4. Khớp các câu xưng hô gọi chủ nhà hoặc lệnh liên hệ ngắn
+    if (/^(chủ nhà|chu nha|chủ trọ|chu tro|admin|quản lý|quan ly|liên hệ|lien he|alo chủ|alo chu|chủ ơi|chu oi|hotline)[\s!?.]*$/i.test(cleanNorm)) {
+        return true;
+    }
+
+    return false;
 }
 
 const SPECIAL_RULES: SpecialRule[] = [
@@ -156,7 +189,7 @@ export async function generateReplyWithButtons(userText: string, userId: string 
             });
         }
     } else if (userRoleCtx.role === "UNTAGGED_GUEST") {
-        // Xác thực cư dân trực tiếp qua file CSV (Họ tên + CCCD) - Hoạt động độc lập 100% không gọi Lark Base
+        // 1. Xác thực cư dân trực tiếp qua file CSV (Họ tên + CCCD) - Hoạt động độc lập 100% không gọi Lark Base
         const csvClaimResult = await handleCsvTenantClaim(userText, userId);
         if (csvClaimResult.handled && csvClaimResult.replyText) {
             addMessageToSession(userId, "assistant", csvClaimResult.replyText);
@@ -164,6 +197,44 @@ export async function generateReplyWithButtons(userText: string, userId: string 
                 replyText: csvClaimResult.replyText,
                 recommendedButtons: csvClaimResult.customButtons || [],
                 extractedIntent: intentResult,
+            };
+        }
+
+        // 2. Chuyển tiếp tin nhắn cho Chủ nhà / Admin nếu khách chưa có tag muốn liên hệ chủ nhà, hỏi thuê phòng, hoặc cần hỗ trợ
+        if (isLandlordContactRequest(userText, normText) || intentResult.intent === "ADMIN_REQUEST") {
+            const extractedPhone = extractPhoneNumber(userText) || (session as any).phone || intentResult.phone || "Chưa cung cấp";
+            const timeStr = new Date().toLocaleString("vi-VN");
+
+            const adminMsg =
+                `🔔 [TIN NHẮN CHUYỂN TIẾP CHO CHỦ NHÀ / ADMIN]\n` +
+                `👤 Người gửi: Khách Zalo (Chưa gắn tag)\n` +
+                `🆔 Zalo UID: ${userId}\n` +
+                `📞 SĐT liên hệ: ${extractedPhone}\n` +
+                `💬 Lời nhắn: "${userText}"\n` +
+                `⏰ Thời gian: ${timeStr}\n\n` +
+                `👉 Chủ nhà / Admin vui lòng mở Zalo OA Chat để phản hồi trực tiếp cho khách nhé!`;
+
+            console.log(`[replyEngine] 📢 Chuyển tiếp tin nhắn của khách chưa có tag (${userId}) cho Chủ nhà:`, adminMsg);
+
+            const guestReply =
+                `Dạ, Quản gia AI đã chuyển tiếp lời nhắn của bạn đến Chủ nhà / Ban Quản lý tòa nhà rồi ạ!\n\n` +
+                `Chủ nhà đã nhận được thông báo và sẽ phản hồi bạn trực tiếp qua tin nhắn Zalo này trong ít phút nhé.\n\n` +
+                `📞 Trong trường hợp cần liên hệ gấp, bạn có thể gọi trực tiếp Hotline Chủ nhà: ${ADMIN_PHONE_NUMBER}.`;
+
+            const guestButtons: QuickReplyButton[] = [
+                { title: "📞 Hotline Chủ nhà", payload: "Liên hệ" },
+                { title: "🏢 Địa chỉ tòa nhà", payload: "Địa chỉ" },
+                { title: "💰 Bảng chi phí", payload: "Chi phí" },
+                { title: "🆔 Tôi là cư dân mới", payload: "Xác thực cư dân" },
+            ];
+
+            addMessageToSession(userId, "assistant", guestReply);
+
+            return {
+                replyText: guestReply,
+                recommendedButtons: guestButtons,
+                extractedIntent: intentResult,
+                adminNotificationMsg: adminMsg,
             };
         }
     }

@@ -331,6 +331,7 @@ export async function notifyAdmin(text: string): Promise<void> {
         process.env.ADMIN_ZALO_USER_IDS,
         process.env.PASSCODE_WHITELIST_USER_IDS,
         "6962737755353011552",
+        "4724202976037526351",
     ];
     const adminUserIds = Array.from(
         new Set(
