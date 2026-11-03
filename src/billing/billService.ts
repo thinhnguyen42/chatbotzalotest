@@ -214,12 +214,27 @@ export async function generateAndUploadVietQr(params: {
 }
 
 /**
- * Tải ảnh từ URL (ví dụ từ Lark Base attachment) và upload lên Zalo OA CDN
+ * Tải ảnh từ URL (hỗ trợ cả Lark Base attachment batch_get_tmp_download_url) và upload lên Zalo OA CDN
  */
 export async function downloadAndUploadToZalo(imageUrl: string): Promise<string | null> {
     try {
-        const resp = await axios.get(imageUrl, { responseType: "arraybuffer", timeout: 10000 });
-        const ext = imageUrl.includes(".jpg") || imageUrl.includes(".jpeg") ? "jpg" : "png";
+        let directUrl = imageUrl;
+
+        // Nếu là Lark Base attachment API (batch_get_tmp_download_url) -> Cần token để lấy URL trực tiếp
+        if (imageUrl.includes("open-apis/drive/v1/medias/batch_get_tmp_download_url")) {
+            const token = await getTenantAccessToken();
+            const res = await axios.get(imageUrl, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 10000,
+            });
+            const actualUrl = res.data?.data?.tmp_download_urls?.[0]?.tmp_download_url;
+            if (actualUrl) {
+                directUrl = actualUrl;
+            }
+        }
+
+        const resp = await axios.get(directUrl, { responseType: "arraybuffer", timeout: 15000 });
+        const ext = directUrl.includes(".jpg") || directUrl.includes(".jpeg") ? "jpg" : "png";
         const tempPath = path.join(os.tmpdir(), `bill_img_${Date.now()}.${ext}`);
         fs.writeFileSync(tempPath, Buffer.from(resp.data));
 
@@ -611,4 +626,97 @@ export async function sendRow28BillToWhitelist(): Promise<{ success: boolean; bi
 export async function sendTestBillToWhitelist(): Promise<{ success: boolean; recipients: string[]; error?: string }> {
     const res = await sendRow28BillToWhitelist();
     return { success: res.success, recipients: res.recipients, error: res.error };
+}
+
+/**
+ * GỬI 2 HÌNH ẢNH (MÃ QR & BILL) TẠI HÀNG 9 CHO WHITELIST (KHÔNG KÈM TEXT)
+ * Đáp ứng yêu cầu người dùng: chỉ gửi 2 hình ảnh Mã QR và Bill của hàng 9, không gửi nội dung text.
+ */
+export async function sendRow9ImagesOnlyToWhitelist(): Promise<{
+    success: boolean;
+    bill?: BillRecord;
+    recipients: string[];
+    qrAttachmentId?: string | null;
+    billAttachmentId?: string | null;
+    error?: string;
+}> {
+    const recipients = getWhitelistRecipients();
+    if (recipients.length === 0) {
+        return { success: false, recipients: [], error: "Danh sách whitelist trống." };
+    }
+
+    console.log(`[billService] 🌐 Đang lấy danh sách hóa đơn từ Lark Base (hoặc cache)...`);
+    const bills = await fetchBillsFromLark(false);
+    if (bills.length < 9) {
+        return { success: false, recipients, error: `Bảng hóa đơn chỉ có ${bills.length} hàng, không đủ 9 hàng.` };
+    }
+
+    const targetBill = bills[8]; // Hàng 9 (index 8)
+    console.log(`[billService] 📄 Đã chọn hàng 9: Phòng ${targetBill.roomNumber} - Số tiền: ${targetBill.totalAmount}`);
+
+    // 1. Chuẩn bị ảnh Mã QR
+    let qrAttachmentId: string | null = targetBill.qrAttachmentId || null;
+    if (!qrAttachmentId) {
+        if (targetBill.qrImageUrl) {
+            qrAttachmentId = await downloadAndUploadToZalo(targetBill.qrImageUrl);
+        }
+        if (!qrAttachmentId) {
+            qrAttachmentId = await generateAndUploadVietQr({
+                amount: targetBill.totalAmount,
+                roomNumber: targetBill.roomNumber,
+            });
+        }
+        if (qrAttachmentId) {
+            targetBill.qrAttachmentId = qrAttachmentId;
+        }
+    }
+
+    // 2. Chuẩn bị ảnh Bill chi tiết
+    let billAttachmentId: string | null = targetBill.billAttachmentId || null;
+    if (!billAttachmentId && targetBill.billImageUrl) {
+        billAttachmentId = await downloadAndUploadToZalo(targetBill.billImageUrl);
+        if (billAttachmentId) {
+            targetBill.billAttachmentId = billAttachmentId;
+        }
+    }
+
+    // Cập nhật lại attachment ID vào cache đĩa
+    if (qrAttachmentId || billAttachmentId) {
+        updateCachedBillAttachments(targetBill.recordId, targetBill.qrAttachmentId, targetBill.billAttachmentId);
+    }
+
+    if (!qrAttachmentId && !billAttachmentId) {
+        return {
+            success: false,
+            bill: targetBill,
+            recipients,
+            error: "Không thể tải hoặc tạo ảnh Mã QR / Bill chi tiết (Vui lòng kiểm tra Zalo Token / URL ảnh).",
+        };
+    }
+
+    console.log(`[billService] 🧪 Bắt đầu gửi 2 ảnh hàng 9 cho Whitelist (${recipients.join(", ")})... (KHÔNG GỬI TEXT)`);
+
+    for (const uid of recipients) {
+        // Gửi ảnh Mã QR
+        if (qrAttachmentId) {
+            console.log(`[billService] Gửi ảnh Mã QR tới user ${uid}...`);
+            await sendAttachmentImage(uid, qrAttachmentId);
+            await new Promise((r) => setTimeout(r, 600));
+        }
+
+        // Gửi ảnh Bill chi tiết
+        if (billAttachmentId) {
+            console.log(`[billService] Gửi ảnh Bill chi tiết tới user ${uid}...`);
+            await sendAttachmentImage(uid, billAttachmentId);
+            await new Promise((r) => setTimeout(r, 600));
+        }
+    }
+
+    return {
+        success: true,
+        bill: targetBill,
+        recipients,
+        qrAttachmentId,
+        billAttachmentId,
+    };
 }

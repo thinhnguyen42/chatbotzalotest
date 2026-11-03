@@ -15,7 +15,7 @@ import { LARK_INCIDENT_FORM_URL, invalidateTenantCache } from "./lark/larkClient
 import { startTTLockServiceIfNeeded } from "./ttlock/ttlockServiceManager";
 import { prewarmTTLock } from "./ttlock/ttlockClient";
 import { startMonthlyBillCron } from "./jobs/monthlyBillCron";
-import { sendTestBillToWhitelist, sendRow28BillToWhitelist, fetchBillsFromLark, dispatchMonthlyBills } from "./billing/billService";
+import { sendTestBillToWhitelist, sendRow28BillToWhitelist, sendRow9ImagesOnlyToWhitelist, fetchBillsFromLark, dispatchMonthlyBills } from "./billing/billService";
 import { startCsvTenantWatcher, loadTenantsFromCsv, handleAdminCsvUpload, validateAndParseCsvContent, backupCurrentTenantsCsv, syncActiveLinksWithCsv } from "./user/tenantCsvService";
 import { isAdminUser } from "./config/adminConfig";
 
@@ -185,6 +185,17 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                         console.log("[server] Kết quả gửi bill hàng 28 test:", res);
                     }).catch(err => {
                         console.error("[server] Lỗi gửi bill test:", err.message);
+                    });
+                    return;
+                }
+
+                // Lệnh gửi 2 hình ảnh (Mã QR & Bill) tại Hàng 9 cho Whitelist (chỉ hình ảnh, không kèm text)
+                if (/^(test bill 9|bill 9|gửi bill 9|gui bill 9|hàng 9|hang 9)$/i.test(userText.trim())) {
+                    await sendTextMessage(userId, "🧪 Quản gia AI đang tải và gửi 2 hình ảnh (Mã QR & Bill chi tiết) của hàng 9 tới danh sách Whitelist...");
+                    sendRow9ImagesOnlyToWhitelist().then(res => {
+                        console.log("[server] Kết quả gửi 2 ảnh hàng 9 test:", res);
+                    }).catch(err => {
+                        console.error("[server] Lỗi gửi ảnh hàng 9:", err.message);
                     });
                     return;
                 }
@@ -567,6 +578,18 @@ app.post("/api/admin/sync-csv", async (req: Request, res: Response) => {
         }
     } catch (err: any) {
         return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Endpoint gửi 2 hình ảnh (Mã QR & Bill chi tiết) tại Hàng 9 cho Whitelist (không kèm text)
+app.all("/api/bills/test-row9-images", async (_req: Request, res: Response) => {
+    try {
+        console.log("[server] Nhận yêu cầu gửi 2 ảnh hàng 9 tới Whitelist...");
+        const result = await sendRow9ImagesOnlyToWhitelist();
+        res.json(result);
+    } catch (err: any) {
+        console.error("[server] Lỗi gửi 2 ảnh hàng 9:", err.message);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
