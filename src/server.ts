@@ -18,6 +18,7 @@ import { startMonthlyBillCron } from "./jobs/monthlyBillCron";
 import { sendTestBillToWhitelist, sendRow28BillToWhitelist, sendRow9ImagesOnlyToWhitelist, fetchBillsFromLark, dispatchMonthlyBills } from "./billing/billService";
 import { startCsvTenantWatcher, loadTenantsFromCsv, handleAdminCsvUpload, validateAndParseCsvContent, backupCurrentTenantsCsv, syncActiveLinksWithCsv } from "./user/tenantCsvService";
 import { isAdminUser } from "./config/adminConfig";
+import { ouRouter } from "./ou/ouRouter";
 
 const app = express();
 
@@ -36,6 +37,12 @@ app.use(
 //    https://your-domain.com/zalo-verification.html
 // Nhớ ĐỔI TÊN file trong /public thành đúng tên mà Zalo yêu cầu
 app.use(express.static(path.join(__dirname, "..", "public")));
+
+// ==========================================
+// MOUNT MODULE OU: SỔ TAY SINH VIÊN ĐẠI HỌC MỞ
+// ==========================================
+app.use("/ou", ouRouter);
+app.use("/api/ou", ouRouter);
 
 // Route xác thực quyền sở hữu tên miền cho Zalo Developer (HTML file & Meta tags)
 app.get("/zalo_verifierMDYa0wpLTYTR_j5-cFnTVcQEYrkA-546CJ4r.html", (_req, res) => {
