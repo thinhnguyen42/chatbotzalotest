@@ -14,7 +14,6 @@ export const ADMIN_ZALO_USER_ID = process.env.ZALO_ADMIN_USER_ID || "";
 export function getAdminUserIds(): string[] {
     const list = [
         "6962737755353011552",
-        "4724202976037526351",
         ...(process.env.ADMIN_ZALO_USER_IDS || "").split(","),
         ...(process.env.ZALO_ADMIN_USER_ID || "").split(","),
         ...(process.env.PASSCODE_WHITELIST_USER_IDS || "").split(","),

@@ -7,8 +7,7 @@
 ## 1. CÁC TÀI KHOẢN ADMIN ĐƯỢC ỦY QUYỀN
 
 Các lệnh quản trị và tính năng tải file cấu hình chỉ có hiệu lực khi gửi từ các tài khoản Zalo UID sau:
-* `4724202976037526351` (Admin Chính)
-* `6962737755353011552` (Tester / Admin Phụ)
+* `6962737755353011552` (Tester / Admin)
 * Các ID được cấu hình trong biến môi trường `.env` (`ADMIN_ZALO_USER_IDS`).
 
 ---

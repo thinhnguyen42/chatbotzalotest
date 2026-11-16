@@ -90,7 +90,6 @@ export function getWhitelistRecipients(): string[] {
         process.env.ZALO_ADMIN_USER_ID,
         ...(process.env.PASSCODE_WHITELIST_USER_IDS || "").split(","),
         "6962737755353011552",
-        "4724202976037526351",
     ];
     return Array.from(new Set(list.map((s) => (s || "").trim()).filter(Boolean)));
 }
