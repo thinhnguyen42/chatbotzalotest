@@ -557,6 +557,39 @@ export async function dispatchMonthlyBills(): Promise<{ total: number; sent: num
 }
 
 /**
+ * GỬI HÓA ĐƠN THỬ NGHIỆM TẠI HÀNG BẤT KỲ (1-indexed) CHO WHITELIST (Tester & Admin)
+ */
+export async function sendRowBillToWhitelist(rowNumber: number): Promise<{ success: boolean; bill?: BillRecord; recipients: string[]; error?: string }> {
+    const recipients = getWhitelistRecipients();
+    if (recipients.length === 0) {
+        return { success: false, recipients: [], error: "Danh sách whitelist trống." };
+    }
+
+    if (!Number.isInteger(rowNumber) || rowNumber < 1) {
+        return { success: false, recipients, error: `Số hàng không hợp lệ: ${rowNumber}` };
+    }
+
+    const bills = await fetchBillsFromLark(false);
+    if (bills.length < rowNumber) {
+        return {
+            success: false,
+            recipients,
+            error: `Bảng hóa đơn hiện chỉ có ${bills.length} hàng, không tìm thấy hàng ${rowNumber}.`,
+        };
+    }
+
+    const targetBill = bills[rowNumber - 1];
+    console.log(`[billService] 🧪 Bắt đầu gửi hóa đơn hàng ${rowNumber} (Phòng ${targetBill.roomNumber}) cho Whitelist: ${recipients.join(", ")}`);
+
+    for (const uid of recipients) {
+        await sendBillToUser(targetBill, uid);
+        await new Promise((r) => setTimeout(r, 600));
+    }
+
+    return { success: true, bill: targetBill, recipients };
+}
+
+/**
  * GỬI HÓA ĐƠN THỬ NGHIỆM TẠI HÀNG 28 CHO WHITELIST (Tester & Admin)
  */
 export async function sendRow28BillToWhitelist(): Promise<{ success: boolean; bill?: BillRecord; recipients: string[]; error?: string }> {

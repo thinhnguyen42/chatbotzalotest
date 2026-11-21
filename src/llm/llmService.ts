@@ -116,7 +116,8 @@ export async function generateLlmAnswer(
     userText: string,
     history: Message[] = [],
     contextChunks: string[] = [],
-    sessionContext?: { roomNumber?: string; userName?: string }
+    sessionContext?: { roomNumber?: string; userName?: string },
+    customSystemPrompt?: string
 ): Promise<string | null> {
     const kbContext = contextChunks.length > 0
         ? contextChunks.map((chunk, i) => `--- ĐOẠN TRI THỨC ${i + 1} ---\n${chunk}`).join("\n\n")
@@ -147,12 +148,14 @@ CÂU HỎI MỚI NHẤT CỦA KHÁCH HÀNG:
 
 Hãy tổng hợp câu trả lời tự nhiên, lịch sự dựa trên thông tin trên:`;
 
+    const activeSystemPrompt = customSystemPrompt || SYSTEM_PERSONA_PROMPT;
+
     // 1. Thử gọi Gemini (Primary)
-    let reply = await callGeminiApi(SYSTEM_PERSONA_PROMPT, userPrompt);
+    let reply = await callGeminiApi(activeSystemPrompt, userPrompt);
     if (reply) return reply;
 
     // 2. Dự phòng: Thử gọi Groq (Backup)
-    reply = await callGroqApi(SYSTEM_PERSONA_PROMPT, userPrompt);
+    reply = await callGroqApi(activeSystemPrompt, userPrompt);
     if (reply) return reply;
 
     return null;

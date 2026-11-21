@@ -307,7 +307,7 @@ export async function generateReplyWithButtons(userText: string, userId: string 
             // BƯỚC 1: Người dùng yêu cầu pass chung chung -> Hiện 4 nút chọn cửa
             if (doorType === "UNSPECIFIED") {
                 session.pendingGateAction = { step: "CHOOSE_DOOR" };
-                reply = `Dạ chào bạn${tenantName}! Quản gia AI có thể tạo mã PIN mở cửa tự động cho bạn ngay.\n\nBạn muốn lấy passcode cho khu vực nào ạ? Vui lòng bấm chọn bên dưới nhé:\n\n⏱ Mã sau khi tạo sẽ có hiệu lực trong vòng 30 phút.`;
+                reply = `Dạ chào bạn${tenantName}! Quản gia AI có thể tạo mã PIN mở cửa tự động cho bạn ngay.\n\nBạn muốn lấy mã mở cửa cho khu vực nào ạ? Vui lòng bấm chọn bên dưới nhé:`;
                 customButtons = [
                     { title: "🚪 Cửa to", payload: "Cửa to" },
                     { title: "🚶 Cửa nhỏ", payload: "Cửa nhỏ" },
@@ -392,11 +392,20 @@ export async function generateReplyWithButtons(userText: string, userId: string 
                 }
 
                 if (result.success && result.passcode) {
-                    const expireStr = `${result.validMinutes ?? 30} phút`;
-                    if (isReused) {
-                        reply = `🔑 Quản gia AI gửi lại mã mở ${doorLabel} đang hoạt động của bạn:\n\nMã PIN: ${result.passcode}\nThời hạn còn lại: khoảng ${expireStr}\n\n📌 Hướng dẫn mở cửa:\n• Nhập mã PIN và bấm phím # trên bàn phím khóa (Ví dụ: ${result.passcode}#).\n• Sau khi qua cửa, bạn vui lòng khép cửa cẩn thận nhé!\n\n⚠️ Vui lòng không chia sẻ mã này cho người lạ ngoài người thân.`;
-                    } else {
-                        reply = `🔑 Quản gia AI đã tạo mã mở ${doorLabel} cho bạn:\n\nMã PIN: ${result.passcode}\nHiệu lực: ${expireStr} (tự hủy sau khi hết hạn)\n\n📌 Hướng dẫn mở cửa:\n• Nhập mã PIN và bấm phím # trên bàn phím khóa (Ví dụ: ${result.passcode}#).\n• Sau khi qua cửa, bạn vui lòng khép cửa cẩn thận nhé!\n\n⚠️ Vui lòng không chia sẻ mã này cho người lạ ngoài người thân.`;
+                    const header = isReused
+                        ? `🔑 Mã mở ${doorLabel} đang dùng của bạn:`
+                        : `🔑 Quản gia AI gửi bạn mã mở ${doorLabel}:`;
+
+                    reply =
+                        `${header}\n\n` +
+                        `👉 Mã PIN: ${result.passcode}\n\n` +
+                        `📌 Hướng dẫn mở khóa:\n` +
+                        `• Nhập dãy số ${result.passcode} rồi bấm phím # ở cuối (${result.passcode}#) để hoàn thành mở khóa.\n` +
+                        `• Nếu lỡ bấm sai số, bấm phím * để xóa và nhập lại.\n` +
+                        `• Sau khi qua cửa, bạn nhớ khép cửa cẩn thận và không chia sẻ mã cho người lạ nhé!`;
+
+                    if (!isReused) {
+                        const expireStr = `${result.validMinutes ?? 30} phút`;
                         adminNotificationMsg = `🚪 [PASSCODE ĐÃ CẤP]\n• Cửa: ${doorLabel} (${targetLockCode})\n• Phòng: ${roomNum} (${tagCode})\n• Cư dân: ${userRoleCtx.tenantName || "Cư dân"}\n• Mã PIN: ${result.passcode}\n• Hiệu lực: ${expireStr}\n• Thời gian cấp: ${new Date().toLocaleString("vi-VN")}`;
                     }
 

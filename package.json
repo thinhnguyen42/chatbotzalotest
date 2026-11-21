@@ -5,10 +5,13 @@
     "main": "dist/server.js",
     "scripts": {
         "dev": "nodemon --exec ts-node src/server.ts",
+        "dev:ou": "nodemon --watch src/ou --exec ts-node src/ou/ouServer.ts",
         "build": "tsc",
         "start": "node dist/server.js",
+        "start:ou": "node dist/ou/ouServer.js",
         "lint": "tsc --noEmit",
         "test": "echo \"No tests specified\"",
+        "test:ou": "ts-node scripts/testOuHandbook.ts",
         "ingest": "ts-node scripts/ingest.ts",
         "token:exchange": "ts-node scripts/exchangeCode.ts",
         "token:set": "ts-node scripts/setToken.ts"

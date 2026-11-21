@@ -15,7 +15,7 @@ import { LARK_INCIDENT_FORM_URL, invalidateTenantCache } from "./lark/larkClient
 import { startTTLockServiceIfNeeded } from "./ttlock/ttlockServiceManager";
 import { prewarmTTLock } from "./ttlock/ttlockClient";
 import { startMonthlyBillCron } from "./jobs/monthlyBillCron";
-import { sendTestBillToWhitelist, sendRow28BillToWhitelist, sendRow9ImagesOnlyToWhitelist, fetchBillsFromLark, dispatchMonthlyBills } from "./billing/billService";
+import { sendTestBillToWhitelist, sendRow28BillToWhitelist, sendRow9ImagesOnlyToWhitelist, sendRowBillToWhitelist, fetchBillsFromLark, dispatchMonthlyBills } from "./billing/billService";
 import { startCsvTenantWatcher, loadTenantsFromCsv, handleAdminCsvUpload, validateAndParseCsvContent, backupCurrentTenantsCsv, syncActiveLinksWithCsv } from "./user/tenantCsvService";
 import { isAdminUser } from "./config/adminConfig";
 import { ouRouter } from "./ou/ouRouter";
@@ -185,17 +185,6 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     return;
                 }
 
-                // Lệnh gửi hóa đơn thử nghiệm cho Whitelist (Hàng 28 hoặc Mẫu chuẩn)
-                if (/^(test bill|admin test bill|gửi bill test|gui bill test|bill 28|test bill 28|gửi bill 28|gui bill 28|hàng 28|hang 28)$/i.test(userText.trim())) {
-                    await sendTextMessage(userId, "🧪 Quản gia AI đang gửi hóa đơn hàng 28 (kèm mã QR thanh toán) tới danh sách Whitelist...");
-                    sendRow28BillToWhitelist().then(res => {
-                        console.log("[server] Kết quả gửi bill hàng 28 test:", res);
-                    }).catch(err => {
-                        console.error("[server] Lỗi gửi bill test:", err.message);
-                    });
-                    return;
-                }
-
                 // Lệnh gửi 2 hình ảnh (Mã QR & Bill) tại Hàng 9 cho Whitelist (chỉ hình ảnh, không kèm text)
                 if (/^(test bill 9|bill 9|gửi bill 9|gui bill 9|hàng 9|hang 9)$/i.test(userText.trim())) {
                     await sendTextMessage(userId, "🧪 Quản gia AI đang tải và gửi 2 hình ảnh (Mã QR & Bill chi tiết) của hàng 9 tới danh sách Whitelist...");
@@ -203,6 +192,36 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                         console.log("[server] Kết quả gửi 2 ảnh hàng 9 test:", res);
                     }).catch(err => {
                         console.error("[server] Lỗi gửi ảnh hàng 9:", err.message);
+                    });
+                    return;
+                }
+
+                // Lệnh gửi hóa đơn thử nghiệm tại hàng bất kỳ (VD: "bill 1", "hàng 1", "test bill 2")
+                const rowBillMatch = userText.trim().match(/^(?:test\s*bill|gửi\s*bill|gui\s*bill|hàng|hang)\s+(\d{1,3})$/i)
+                    || userText.trim().match(/^bill\s+(\d{1,2})$/i);
+                if (rowBillMatch && isAdminUser(userId)) {
+                    const rowNum = Number(rowBillMatch[1]);
+                    if (rowNum === 28) {
+                        await sendTextMessage(userId, "🧪 Quản gia AI đang gửi hóa đơn hàng 28 (kèm mã QR thanh toán) tới danh sách Whitelist...");
+                        sendRow28BillToWhitelist().catch(err => console.error("[server] Lỗi gửi bill 28:", err.message));
+                    } else {
+                        await sendTextMessage(userId, `🧪 Quản gia AI đang gửi hóa đơn hàng ${rowNum} tới danh sách Whitelist...`);
+                        sendRowBillToWhitelist(rowNum).then(async (res) => {
+                            if (!res.success && res.error) {
+                                await sendTextMessage(userId, `⚠️ Không thể gửi bill hàng ${rowNum}: ${res.error}`);
+                            }
+                        }).catch(err => console.error(`[server] Lỗi gửi bill hàng ${rowNum}:`, err.message));
+                    }
+                    return;
+                }
+
+                // Lệnh gửi hóa đơn thử nghiệm cho Whitelist (Hàng 28 hoặc Mẫu chuẩn)
+                if (/^(test bill|admin test bill|gửi bill test|gui bill test|bill 28|test bill 28|gửi bill 28|gui bill 28|hàng 28|hang 28)$/i.test(userText.trim())) {
+                    await sendTextMessage(userId, "🧪 Quản gia AI đang gửi hóa đơn hàng 28 (kèm mã QR thanh toán) tới danh sách Whitelist...");
+                    sendRow28BillToWhitelist().then(res => {
+                        console.log("[server] Kết quả gửi bill hàng 28 test:", res);
+                    }).catch(err => {
+                        console.error("[server] Lỗi gửi bill test:", err.message);
                     });
                     return;
                 }
@@ -596,6 +615,19 @@ app.all("/api/bills/test-row9-images", async (_req: Request, res: Response) => {
         res.json(result);
     } catch (err: any) {
         console.error("[server] Lỗi gửi 2 ảnh hàng 9:", err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Endpoint test gửi hóa đơn theo số hàng bất kỳ (VD: /api/bills/test-row/1)
+app.all("/api/bills/test-row/:row", async (req: Request, res: Response) => {
+    try {
+        const rowNum = Number(req.params.row);
+        console.log(`[server] Nhận yêu cầu gửi thử hóa đơn hàng ${rowNum} tới Whitelist...`);
+        const result = await sendRowBillToWhitelist(rowNum);
+        res.json(result);
+    } catch (err: any) {
+        console.error("[server] Lỗi gửi thử hóa đơn theo hàng:", err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
