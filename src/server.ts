@@ -243,8 +243,10 @@ app.post("/webhook", verifyZaloSignature, async (req: Request, res: Response) =>
                     return;
                 }
 
-                const { replyText, recommendedButtons, extractedIntent, createdTicket, adminNotificationMsg } = await generateReplyWithButtons(userText, userId);
-                await sendQuickReplies(userId, replyText, recommendedButtons);
+                const { replyText, recommendedButtons, extractedIntent, createdTicket, adminNotificationMsg, skipTextReply } = await generateReplyWithButtons(userText, userId);
+                if (!skipTextReply && replyText) {
+                    await sendQuickReplies(userId, replyText, recommendedButtons);
+                }
 
                 // Nếu khách hỏi về Nội quy -> Tự động upload & gửi kèm hình ảnh noiQuy.jpg
                 const isHouseRules = /\b(nội quy|quy định)\b/i.test(userText);

@@ -5,14 +5,14 @@ import { addMessageToSession, updateSessionContext, getSession } from "./memory/
 import { extractIntentAndEntities, IntentResult, QuickReplyButton } from "./intentEngine";
 import { createTicket, formatAdminTicketMessage, Ticket } from "./ticket/ticketService";
 import { ADMIN_PHONE_NUMBER } from "./config/adminConfig";
-import { notifyAdmin, sendAttachmentImage } from "./zaloClient";
+import { notifyAdmin } from "./zaloClient";
 import { resolveUserRole, handlePhoneClaim, handleCccdClaim, extractPhoneNumber } from "./user/userRoleService";
 import { handleCsvTenantClaim } from "./user/tenantCsvService";
 import { handleAdminRemoveTag } from "./user/adminTagService";
 import { LARK_INCIDENT_FORM_URL, LARK_INCIDENT_SHORT_URL } from "./lark/larkClient";
 import { requestPasscode } from "./ttlock/ttlockClient";
 import { getActivePasscode, saveActivePasscode } from "./ttlock/lockRegistry";
-import { findBillByRoom, formatBillNotification } from "./billing/billService";
+import { findBillByRoom, sendBillToUser } from "./billing/billService";
 
 interface SpecialRule {
     match: (text: string, normText: string) => boolean;
@@ -25,6 +25,7 @@ export interface BotReplyResult {
     extractedIntent: IntentResult;
     createdTicket?: Ticket;
     adminNotificationMsg?: string;
+    skipTextReply?: boolean;
 }
 
 /**
@@ -265,6 +266,7 @@ export async function generateReplyWithButtons(userText: string, userId: string 
     let createdTicket: Ticket | undefined;
     let adminNotificationMsg: string | undefined;
     let customButtons: QuickReplyButton[] | undefined;
+    let skipTextReply = false;
 
     // 1. Kiểm tra các quy tắc đặc biệt (ví dụ: số phòng)
     for (const rule of SPECIAL_RULES) {
@@ -437,19 +439,18 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         }
     }
 
-    // 2.8. XỬ LÝ TRA CỨU HÓA ĐƠN / TIỀN PHÒNG (BILLING) DÀNH CHO CƯ DÂN CÓ TAG (0 LARK API CALLS)
+    // 2.8. XỬ LÝ TRA CỨU HÓA ĐƠN / TIỀN PHÒNG (BILLING) DÀNH CHO CƯ DÂN CÓ TAG (CHỈ GỬI ẢNH BILL)
     if (!reply && intentResult.intent === "BILLING") {
         const targetRoom = userRoleCtx.roomNumber || session.roomNumber;
         if (targetRoom && targetRoom !== "Chưa xác định" && targetRoom !== "000") {
             const bill = findBillByRoom(targetRoom);
             if (bill) {
-                reply = formatBillNotification(bill);
-                customButtons = [
-                    { title: "✅ Đã chuyển khoản", payload: `Đã chuyển khoản bill phòng ${bill.roomNumber}` },
-                    { title: "📞 Cần hỗ trợ", payload: "Liên hệ" },
-                ];
-                if (bill.qrAttachmentId) {
-                    sendAttachmentImage(userId, bill.qrAttachmentId).catch(() => {});
+                const sent = await sendBillToUser(bill, userId);
+                if (sent) {
+                    reply = `Đã gửi hình ảnh hóa đơn phòng ${bill.roomNumber}.`;
+                    skipTextReply = true;
+                } else {
+                    reply = `Dạ, hiện tại hình ảnh hóa đơn kỳ này của phòng ${targetRoom} chưa sẵn sàng ạ. Nếu cần hỗ trợ gấp, bạn liên hệ:\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`;
                 }
             } else {
                 reply = `Dạ, hiện tại Ban Quản lý chưa cập nhật bảng hóa đơn kỳ này cho phòng ${targetRoom} ạ.\n\nHóa đơn định kỳ sẽ được tự động gửi vào 20h00 ngày 1 hàng tháng. Nếu cần hỗ trợ khẩn cấp, bạn liên hệ:\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`;
@@ -518,5 +519,6 @@ export async function generateReplyWithButtons(userText: string, userId: string 
         extractedIntent: intentResult,
         createdTicket,
         adminNotificationMsg,
+        skipTextReply,
     };
 }

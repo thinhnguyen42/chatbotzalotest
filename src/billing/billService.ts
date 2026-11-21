@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import { getTenantAccessToken, LARK_BASE_APP_TOKEN, isLarkQuotaBlocked, recordLarkQuotaExceeded } from "../lark/larkClient";
 import { getLocalActiveLinks } from "../user/tenantCsvService";
-import { sendQuickReplies, uploadLocalImageToZalo, sendAttachmentImage } from "../zaloClient";
+import { uploadLocalImageToZalo, sendAttachmentImage } from "../zaloClient";
 import "dotenv/config";
 
 // Cấu hình bảng BILLS trên Lark Base
@@ -476,66 +476,35 @@ export async function fetchBillsFromLark(forceRefresh = false): Promise<BillReco
 }
 
 /**
- * Gửi một hóa đơn cụ thể tới Zalo User ID (Chỉ gọi Lark Base lấy ảnh/upload khi có người nhận hợp lệ)
+ * Gửi một hóa đơn cụ thể tới Zalo User ID (Chỉ gửi hình ảnh Bill chi tiết, không gửi text và không gửi mã QR)
  */
 export async function sendBillToUser(bill: BillRecord, targetUserId: string): Promise<boolean> {
     try {
-        const messageText = formatBillNotification(bill);
-        const buttons = [
-            { title: "✅ Đã chuyển khoản", payload: `Đã chuyển khoản bill phòng ${bill.roomNumber}` },
-            { title: "📞 Cần hỗ trợ", payload: "Liên hệ" },
-        ];
-
-        // 1. Gửi tin nhắn thông báo tóm tắt hóa đơn kèm 2 nút tương tác
-        await sendQuickReplies(targetUserId, messageText, buttons);
-
         let cacheUpdated = false;
+        let billAttachmentId: string | null = bill.billAttachmentId || null;
 
-        // 2. Gửi mã QR ngân hàng để quét chuyển khoản (Tận dụng qrAttachmentId đã cache để tiết kiệm upload)
-        let qrAttachmentId: string | null = bill.qrAttachmentId || null;
-        if (!qrAttachmentId) {
-            if (bill.qrImageUrl) {
-                qrAttachmentId = await downloadAndUploadToZalo(bill.qrImageUrl);
-            }
-            if (!qrAttachmentId) {
-                qrAttachmentId = await generateAndUploadVietQr({
-                    amount: bill.totalAmount,
-                    roomNumber: bill.roomNumber,
-                });
-            }
-            if (qrAttachmentId) {
-                bill.qrAttachmentId = qrAttachmentId;
+        if (!billAttachmentId && bill.billImageUrl) {
+            billAttachmentId = await downloadAndUploadToZalo(bill.billImageUrl);
+            if (billAttachmentId) {
+                bill.billAttachmentId = billAttachmentId;
                 cacheUpdated = true;
             }
         }
 
-        if (qrAttachmentId) {
-            console.log(`[billService] Gửi ảnh mã VietQR tới user ${targetUserId}...`);
-            await sendAttachmentImage(targetUserId, qrAttachmentId);
+        if (!billAttachmentId) {
+            console.warn(`[billService] ⚠️ Phòng ${bill.roomNumber} chưa có hình ảnh Bill để gửi tới user ${targetUserId}.`);
+            return false;
         }
 
-        // 3. Nếu có ảnh hóa đơn chi tiết đính kèm từ Lark thì tải và gửi tiếp ảnh hóa đơn
-        if (bill.billImageUrl) {
-            let billAttachmentId: string | null = bill.billAttachmentId || null;
-            if (!billAttachmentId) {
-                billAttachmentId = await downloadAndUploadToZalo(bill.billImageUrl);
-                if (billAttachmentId) {
-                    bill.billAttachmentId = billAttachmentId;
-                    cacheUpdated = true;
-                }
-            }
-            if (billAttachmentId) {
-                console.log(`[billService] Gửi ảnh Bill chi tiết tới user ${targetUserId}...`);
-                await sendAttachmentImage(targetUserId, billAttachmentId);
-            }
-        }
+        console.log(`[billService] Gửi ảnh Bill chi tiết tới user ${targetUserId}...`);
+        await sendAttachmentImage(targetUserId, billAttachmentId);
 
         // Cập nhật attachment ID vào cache đĩa để các lần gửi/tra cứu tiếp theo dùng ngay (0 Lark API calls)
         if (cacheUpdated) {
             updateCachedBillAttachments(bill.recordId, bill.qrAttachmentId, bill.billAttachmentId);
         }
 
-        console.log(`[billService] ✅ Đã gửi thành công bill phòng ${bill.roomNumber} tới user ${targetUserId}`);
+        console.log(`[billService] ✅ Đã gửi thành công ảnh Bill phòng ${bill.roomNumber} tới user ${targetUserId}`);
         return true;
     } catch (err: any) {
         console.error(`[billService] ❌ Lỗi gửi bill tới user ${targetUserId}:`, err.message);
