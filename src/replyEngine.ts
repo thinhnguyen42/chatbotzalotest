@@ -299,8 +299,10 @@ export async function generateReplyWithButtons(userText: string, userId: string 
                 { title: "📞 Hotline Ban Quản lý", payload: "Liên hệ" },
             ];
         } else {
-            const tagCode = (userRoleCtx.role === "ADMIN" && intentResult.roomNumber) ? `38PBV-${intentResult.roomNumber}` : (userRoleCtx.tagCode || (session as any).tagCode || "38PBV-102");
-            const roomNum = (userRoleCtx.role === "ADMIN" && intentResult.roomNumber) ? intentResult.roomNumber : (userRoleCtx.roomNumber || session.roomNumber || "102");
+            const explicitRoomMatch = userText.match(/(?:phòng|phong|p\.?)\s*(\d{3,4})/i) || normText.match(/(?:phong|p\.?)\s*(\d{3,4})/i);
+            const explicitAdminRoom = explicitRoomMatch?.[1] || (/\b(?:phong\s*lab|cua\s*lab|lab)\b/i.test(normText) ? "601" : undefined);
+            const tagCode = (userRoleCtx.role === "ADMIN" && explicitAdminRoom) ? `38PBV-${explicitAdminRoom}` : (userRoleCtx.tagCode || (session as any).tagCode || "38PBV-601");
+            const roomNum = (userRoleCtx.role === "ADMIN" && explicitAdminRoom) ? explicitAdminRoom : (userRoleCtx.roomNumber || session.roomNumber || "601");
             const tenantName = userRoleCtx.tenantName ? ` ${userRoleCtx.tenantName}` : "";
             const doorType = intentResult.doorType || "UNSPECIFIED";
             const direction = intentResult.direction || "UNSPECIFIED";

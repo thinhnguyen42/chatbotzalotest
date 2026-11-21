@@ -118,6 +118,7 @@ export const LOCK_MAP: Record<string, number> = {
     "GARA_IN": 33197162,
     "GARA_OUT": 30645446,
     "LAB": 30537434,
+    "38PBV-ADMIN": 30537434,
 };
 
 export function getLockIdForTag(tagCode: string): number {

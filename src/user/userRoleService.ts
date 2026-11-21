@@ -118,8 +118,8 @@ export async function resolveUserRole(zaloUserId: string): Promise<UserRoleConte
             zaloUserId,
             role: "ADMIN",
             tenantName: "Ban Quản Lý / Admin",
-            roomNumber: "BQL",
-            tagCode: "38PBV-ADMIN",
+            roomNumber: "601",
+            tagCode: "38PBV-601",
             address: "38 Phan Bá Vành, P. Cát Lái, TP Hồ Chí Minh",
         };
     }
