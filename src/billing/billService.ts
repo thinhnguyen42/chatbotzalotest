@@ -132,15 +132,54 @@ export function findZaloUsersByRoom(roomNumber: string): string[] {
     return uids;
 }
 
+function getBillRecencyScore(bill: BillRecord): number {
+    const period = String(bill.billingPeriod || "").trim();
+    const epochMatch = period.match(/^(\d{12,13})\b/);
+    if (epochMatch) {
+        return Number(epochMatch[1]);
+    }
+
+    const ymdMatch = period.match(/(20\d{2})[-/](\d{1,2})/);
+    if (ymdMatch) {
+        return Date.UTC(Number(ymdMatch[1]), Number(ymdMatch[2]) - 1, 1);
+    }
+
+    const mdyMatch = period.match(/(\d{1,2})[-/](20\d{2})/);
+    if (mdyMatch) {
+        return Date.UTC(Number(mdyMatch[2]), Number(mdyMatch[1]) - 1, 1);
+    }
+
+    const qrMonthMatch = String(bill.qrString || "").match(/thang\s*(\d{1,2})/i);
+    if (qrMonthMatch) {
+        return Number(qrMonthMatch[1]);
+    }
+
+    return 0;
+}
+
 /**
- * Tìm hóa đơn của một phòng từ bộ nhớ đệm persistent cache tháng (0 Lark API calls)
+ * Chọn hóa đơn mới nhất của một phòng từ danh sách hóa đơn
+ */
+export function pickLatestBillForRoom(bills: BillRecord[], roomNumber: string): BillRecord | null {
+    const clean = String(roomNumber || "").replace(/\D/g, "");
+    if (!clean || !Array.isArray(bills) || bills.length === 0) return null;
+
+    const matched = bills.filter((b) => String(b.roomNumber || "").replace(/\D/g, "") === clean);
+    if (matched.length === 0) return null;
+
+    return matched.reduce((latest, current) =>
+        getBillRecencyScore(current) > getBillRecencyScore(latest) ? current : latest
+    );
+}
+
+/**
+ * Tìm hóa đơn mới nhất của một phòng từ bộ nhớ đệm persistent cache tháng (0 Lark API calls)
  */
 export function findBillByRoom(roomNumber: string): BillRecord | null {
     if (!roomNumber) return null;
-    const clean = String(roomNumber).replace(/\D/g, "");
     const cache = loadMonthlyBillsCache();
     if (!cache || !Array.isArray(cache.bills)) return null;
-    return cache.bills.find((b) => String(b.roomNumber).replace(/\D/g, "") === clean) || null;
+    return pickLatestBillForRoom(cache.bills, roomNumber);
 }
 
 /**
@@ -554,6 +593,40 @@ export async function dispatchMonthlyBills(): Promise<{ total: number; sent: num
 
     console.log(`[billService] 🏁 Kết thúc gửi hóa đơn tháng: Tổng ${bills.length} | Gửi: ${sent} | Bỏ qua: ${skipped} | Lỗi: ${errors}`);
     return { total: bills.length, sent, skipped, errors };
+}
+
+/**
+ * GỬI HÓA ĐƠN MỚI NHẤT THEO SỐ PHÒNG CHO WHITELIST (Tester & Admin)
+ */
+export async function sendRoomBillToWhitelist(roomNumber: string): Promise<{ success: boolean; bill?: BillRecord; recipients: string[]; error?: string }> {
+    const recipients = getWhitelistRecipients();
+    if (recipients.length === 0) {
+        return { success: false, recipients: [], error: "Danh sách whitelist trống." };
+    }
+
+    const cleanRoom = String(roomNumber || "").replace(/\D/g, "");
+    if (!cleanRoom) {
+        return { success: false, recipients, error: `Số phòng không hợp lệ: "${roomNumber}".` };
+    }
+
+    const bills = await fetchBillsFromLark(false);
+    const targetBill = pickLatestBillForRoom(bills, cleanRoom);
+    if (!targetBill) {
+        return {
+            success: false,
+            recipients,
+            error: `Không tìm thấy hóa đơn nào cho phòng ${cleanRoom}.`,
+        };
+    }
+
+    console.log(`[billService] 🧪 Bắt đầu gửi hóa đơn mới nhất của phòng ${cleanRoom} (record ${targetBill.recordId}, kỳ: ${targetBill.billingPeriod}) cho Whitelist: ${recipients.join(", ")}`);
+
+    for (const uid of recipients) {
+        await sendBillToUser(targetBill, uid);
+        await new Promise((r) => setTimeout(r, 600));
+    }
+
+    return { success: true, bill: targetBill, recipients };
 }
 
 /**
