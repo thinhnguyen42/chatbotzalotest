@@ -237,7 +237,7 @@ export async function handlePhoneClaim(
     if (matched) {
         return {
             handled: true,
-            replyText: `Dạ, Quản gia AI đã tìm thấy hồ sơ phòng ${matched.roomNumber} khớp với số điện thoại của bạn.\n\n🔒 Để đảm bảo an toàn và kích hoạt quyền cư dân tự động cấp mã mở cửa, bạn vui lòng gửi: **Họ và tên kèm số CCCD** (Ví dụ: "${matched.tenantName} ${matched.cccd.slice(0, 4)}...") nhé!`,
+            replyText: `Dạ, Quản gia AI đã ghi nhận số điện thoại của bạn.\n\n🔒 Để đảm bảo an toàn và kích hoạt quyền cư dân tự động cấp mã mở cửa, bạn vui lòng gửi: **Họ và tên kèm số CCCD** (Ví dụ: "Nguyễn Văn A 012345678912") nhé!`,
         };
     }
 

@@ -293,7 +293,7 @@ export async function generateReplyWithButtons(userText: string, userId: string 
     // 2.5. XỬ LÝ YÊU CẦU MỞ CỔNG / MỞ PHÒNG / GARA / SHIPPER (GATE_ACCESS)
     if (!reply && intentResult.intent === "GATE_ACCESS") {
         if (userRoleCtx.role !== "PRIMARY_LEASEHOLDER" && userRoleCtx.role !== "CO_RESIDENT" && userRoleCtx.role !== "ADMIN") {
-            reply = `Dạ, tính năng cấp mã mở cửa / passcode tự động chỉ dành cho cư dân đã đăng ký tại tòa nhà ạ.\n\nBạn vui lòng gửi Họ tên kèm số CCCD (Ví dụ: "Phạm Kiều Oanh 092301002987") để Quản gia AI kích hoạt quyền cư dân và cấp mã ngay nhé!\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`;
+            reply = `Dạ, tính năng cấp mã mở cửa / passcode tự động chỉ dành cho cư dân đã đăng ký tại tòa nhà ạ.\n\nBạn vui lòng gửi Họ tên kèm số CCCD (Ví dụ: "Nguyễn Văn A 012345678912") để Quản gia AI kích hoạt quyền cư dân và cấp mã ngay nhé!\n📞 Hotline Admin: ${ADMIN_PHONE_NUMBER}`;
             customButtons = [
                 { title: "🆔 Xác thực cư dân", payload: "Xác thực cư dân" },
                 { title: "📞 Hotline Ban Quản lý", payload: "Liên hệ" },
